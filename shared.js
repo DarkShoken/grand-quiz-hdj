@@ -7,7 +7,7 @@
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
   function hasSupabaseConfig() {
-    const cfg = window.BLIND_TEST_CONFIG || {};
+    const cfg = window.GRAND_QUIZ_CONFIG || {};
     return Boolean(
       window.supabase && cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY &&
       !cfg.SUPABASE_URL.includes('VOTRE-PROJET') && !cfg.SUPABASE_ANON_KEY.includes('VOTRE_CLE')
@@ -33,7 +33,7 @@
     };
 
     if (hasSupabaseConfig()) {
-      const cfg = window.BLIND_TEST_CONFIG;
+      const cfg = window.GRAND_QUIZ_CONFIG;
       const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
         realtime: { params: { eventsPerSecond: 30 } }
       });
