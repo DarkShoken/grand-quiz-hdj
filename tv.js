@@ -33,6 +33,7 @@
 
   async function toggleMusic(){
     await window.GrandQuizMusic?.toggle();
+    window.GrandQuizMusic?.sync(currentState || { phase:'lobby' });
     updateMusicButtons();
   }
   musicButtons.forEach((button)=>button.addEventListener('click',toggleMusic));
@@ -65,6 +66,7 @@
   function playersArray(){ return currentState?.players || []; }
 
   function renderLobby(){
+    window.GrandQuizMusic?.sync(currentState || { phase:'lobby' });
     lobbyView.classList.remove('hidden'); gameView.classList.add('hidden');
     setJoinQrVisible(false);
     const players = playersArray();
@@ -74,6 +76,7 @@
 
   function render(){
     if (!currentState || currentState.phase === 'lobby' || currentState.phase === 'setup') { renderLobby(); return; }
+    window.GrandQuizMusic?.sync(currentState);
     lobbyView.classList.add('hidden'); gameView.classList.remove('hidden');
     setJoinQrVisible(currentState.joinQrVisible);
     const answers = currentState.answerCount || 0;
