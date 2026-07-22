@@ -7,7 +7,7 @@
   const stage = document.getElementById('stage');
   const connectionStatus = document.getElementById('connectionStatus');
   const joinQrOverlay = document.getElementById('joinQrOverlay');
-  const musicToggle = document.getElementById('musicToggle');
+  const musicButtons = [document.getElementById('musicToggle'), document.getElementById('musicToggleGame')].filter(Boolean);
   let currentState = null;
   let timer = null;
 
@@ -24,11 +24,19 @@
     event.currentTarget.classList.toggle('flipped');
   });
 
-  async function toggleMusic(){
-    const enabled = await window.GrandQuizMusic?.toggle();
-    if(musicToggle) musicToggle.textContent = enabled ? '🔇 Couper la musique' : '🎵 Activer la musique';
+  function updateMusicButtons(){
+    const enabled=Boolean(window.GrandQuizMusic?.enabled);
+    musicButtons.forEach((button)=>{
+      button.textContent=enabled?'🔇 Couper la musique':'🎵 Activer la musique';
+    });
   }
-  musicToggle?.addEventListener('click', toggleMusic);
+
+  async function toggleMusic(){
+    await window.GrandQuizMusic?.toggle();
+    updateMusicButtons();
+  }
+  musicButtons.forEach((button)=>button.addEventListener('click',toggleMusic));
+  updateMusicButtons();
 
   const transport = G.createTransport({ room, role:'screen', onMessage: handleMessage, onStatus: ({ ready, mode }) => {
     connectionStatus.textContent = ready ? (mode === 'online' ? '🟢 En ligne' : '🟡 Démo locale') : 'Connexion…';
