@@ -1,8 +1,11 @@
 (() => {
-  const cleanRoom = (value) => (value || 'QUIZ01')
-    .toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, '')
-    .slice(0, 16) || 'QUIZ01';
+  const cleanRoom = (value) => {
+    const cleaned = (value || 'QUIZ')
+      .toUpperCase()
+      .replace(/[^A-Z0-9_-]/g, '')
+      .slice(0, 16) || 'QUIZ';
+    return cleaned === 'QUIZ01' ? 'QUIZ' : cleaned;
+  };
 
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
