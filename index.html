@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070817">
-  <title>Le Grand Quiz — Écran TV</title><link rel="stylesheet" href="styles.css?v=1">
+  <title>Le Grand Quiz — Écran TV</title><link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
   <section id="lobbyView" class="shell">
@@ -11,22 +11,44 @@
       <main class="panel hero">
         <div class="hero-kicker">Scannez · Rejoignez · Jouez</div>
         <h2>PRÊTS À JOUER ?</h2>
-        <div class="muted">Code de la partie</div><div id="roomCode" class="room-code">QUIZ01</div>
+        <div class="muted">Code de la partie</div><div id="roomCode" class="room-code">QUIZ</div>
         <div id="qrPlay" class="qr-box" aria-label="QR code pour rejoindre"></div>
         <p class="muted">Scannez avec votre téléphone, choisissez un pseudo et attendez le départ.</p>
+        <button id="musicToggle" class="btn music-btn" type="button">🎵 Activer la musique</button>
       </main>
       <aside class="panel side-card">
         <div class="actions" style="justify-content:space-between"><strong>Joueurs connectés</strong><span id="playerCount" class="badge">0</span></div>
         <div id="playerList" class="player-list"><div class="muted">En attente des joueurs…</div></div>
-        <div style="margin-top:18px"><div class="muted" style="margin-bottom:7px">Console soignant</div><div id="qrHost" class="qr-box"></div></div>
+        <div class="host-qr-section">
+          <div class="muted" style="margin-bottom:8px">Console soignant</div>
+          <button id="hostQrCard" class="qr-flip-card" type="button" aria-label="Afficher ou masquer le QR code soignant">
+            <span class="qr-flip-inner">
+              <span class="qr-face qr-front"><span class="qr-role-icon">🎛️</span><strong>Console soignant</strong><small>Toucher pour afficher le QR</small></span>
+              <span class="qr-face qr-back"><span id="qrHost" class="qr-box"></span><small>Toucher pour masquer</small></span>
+            </span>
+          </button>
+        </div>
       </aside>
     </div>
   </section>
+
   <section id="gameView" class="tv-stage hidden">
-    <header class="tv-top"><div class="tv-title">🧠 LE GRAND QUIZ</div><div class="tv-room"><span class="badge">Salle <strong id="roomTop">QUIZ01</strong></span></div><div id="answerCount" class="answer-count">0 réponse</div></header>
+    <header class="tv-top"><div class="tv-title">🧠 LE GRAND QUIZ</div><div class="tv-room"><span class="badge">Salle <strong id="roomTop">QUIZ</strong></span></div><div id="answerCount" class="answer-count">0 réponse</div></header>
     <main id="stage"></main>
     <footer class="tv-bottom"><span id="connectionStatus" class="badge warn">Connexion…</span></footer>
   </section>
+
+  <div id="joinQrOverlay" class="join-qr-overlay hidden" aria-hidden="true">
+    <div class="join-qr-panel">
+      <button id="closeJoinQr" class="join-qr-close" type="button" aria-label="Masquer le QR code">✕</button>
+      <div class="hero-kicker">UN NOUVEAU JOUEUR ?</div>
+      <h2>Scannez pour rejoindre la partie</h2>
+      <div id="qrPlayGame" class="qr-box"></div>
+      <div class="room-code join-room-code">QUIZ</div>
+      <p class="muted">Vous rejoindrez la partie en cours directement depuis votre téléphone.</p>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script src="config.js"></script><script src="shared.js"></script><script src="tv.js?v=1"></script>
+  <script src="config.js"></script><script src="shared.js"></script><script src="music.js?v=2"></script><script src="tv.js?v=2"></script>
 </body></html>
