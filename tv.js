@@ -131,6 +131,7 @@
       stage.innerHTML = `<article class="question-card"><div class="hero-kicker">${currentState.mode === 'teams' ? 'CLASSEMENT DES ÉQUIPES' : 'PODIUM FINAL'}</div><div class="question-text">🏆 ${currentState.mode === 'teams' ? 'Équipe gagnante' : 'Les champions du quiz'}</div><div class="podium">${ordered.map(p=>{const realPos=ranking.indexOf(p);return `<div class="podium-step ${realPos===0?'first':realPos===1?'second':'third'}"><div class="podium-medal">${['🥇','🥈','🥉'][realPos]}</div><div class="podium-name">${G.escapeHtml(p.name)}</div><div class="podium-score">${p.score} pts</div></div>`}).join('')}</div></article>`;
       G.confetti(130); return;
     }
-    stage.innerHTML = `<article class="question-card"><div class="hero-kicker">CLASSEMENT</div><div class="question-text">Qui prend la tête ?</div><div class="ranking">${ranking.slice(0,10).map((p,i)=>`<div class="rank-row"><div class="rank-pos">${i+1}</div><div class="rank-name">${G.escapeHtml(p.name)}</div><div class="rank-score">${p.score} pts</div></div>`).join('')}</div></article>`;
+    const medals = ['🥇','🥈','🥉'];
+    stage.innerHTML = `<article class="question-card"><div class="hero-kicker">CLASSEMENT</div><div class="question-text">Qui prend la tête ?</div><div class="ranking">${ranking.slice(0,10).map((p,i)=>`<div class="rank-row"><div class="rank-pos">${medals[i] || i+1}</div><div class="rank-name">${G.escapeHtml(p.name)}</div><div class="rank-score">${p.score} pts</div></div>`).join('')}</div></article>`;
   }
 })();
