@@ -3,9 +3,9 @@
   let room = G.cleanRoom(G.qs('room','QUIZ'));
   let transport = null, timer = null, selectedQuestions = [], currentQuestion = null;
   const players = new Map(), answers = new Map();
-  let state = { phase:'lobby', mode:'individual', questionIndex:-1, totalQuestions:0, question:null, answerCount:0, durationMs:20000, deadline:null, buzzedPlayer:null, ranking:[], lastResults:{}, updatedAt:Date.now() };
+  let state = { phase:'lobby', mode:'individual', questionIndex:-1, totalQuestions:0, question:null, answerCount:0, durationMs:20000, deadline:null, buzzedPlayer:null, ranking:[], lastResults:{}, joinQrVisible:false, updatedAt:Date.now() };
 
-  const roomInput=document.getElementById('roomInput'), connection=document.getElementById('connection'), hostStage=document.getElementById('hostStage');
+  const roomInput=document.getElementById('roomInput'), connection=document.getElementById('connection'), hostStage=document.getElementById('hostStage'), joinQrBtn=document.getElementById('joinQrBtn');
   roomInput.value=room; G.setRoomInUrl(room);
   const categories=[...new Set(BANK.map(q=>q.category))].sort();
   document.getElementById('categories').innerHTML=categories.map((c,i)=>`<label class="check"><input type="checkbox" value="${G.escapeHtml(c)}" ${i<10?'checked':''}> <span>${G.escapeHtml(c)}</span></label>`).join('');
@@ -27,7 +27,7 @@
 
   roomInput.addEventListener('change',()=>{
     room=G.cleanRoom(roomInput.value);roomInput.value=room;G.setRoomInUrl(room);
-    players.clear();answers.clear();state.phase='lobby';connect();render();
+    players.clear();answers.clear();state.phase='lobby';state.joinQrVisible=false;connect();render();
   });
 
   function upsertPlayer(payload){
@@ -74,10 +74,18 @@
     };
   }
 
+  function updateJoinQrButton(){
+    if(!joinQrBtn)return;
+    joinQrBtn.textContent=state.joinQrVisible?'✕ Masquer le QR joueurs sur la TV':'📱 Afficher le QR joueurs sur la TV';
+    joinQrBtn.classList.toggle('danger',Boolean(state.joinQrVisible));
+    joinQrBtn.classList.toggle('primary',!state.joinQrVisible);
+  }
+
   function broadcastState(){
     state.updatedAt=Date.now();
     transport?.send('state',snapshot());
     renderMetrics();
+    updateJoinQrButton();
   }
 
   function standardAnswerResult(q,answer){
@@ -95,6 +103,11 @@
   function handleMessage(msg){
     const p=msg.payload||{};
     if(msg.type==='state_request'){ broadcastState(); return; }
+
+    if(msg.type==='join_qr_set'){
+      state.joinQrVisible=Boolean(p.visible);
+      broadcastState();render();return;
+    }
 
     if(msg.type==='join'){
       upsertPlayer(p);
@@ -142,6 +155,7 @@
     state.mode=document.getElementById('modeSelect').value;
     state.durationMs=Number(document.getElementById('durationSelect').value)||20000;
     state.speedBonus=document.getElementById('speedSelect').value==='on';
+    state.joinQrVisible=false;
     const pool=BANK.filter(q=>cats.includes(q.category));
     selectedQuestions=G.shuffle(pool).slice(0,Math.min(count,pool.length));
     if(!selectedQuestions.length)return;
@@ -216,12 +230,12 @@
   }
 
   function showLeaderboard(){state.phase='leaderboard';state.ranking=ranking();broadcastState();render();}
-  function finishGame(){clearTimeout(timer);currentQuestion=null;state.phase='finished';state.ranking=ranking();state.question=null;broadcastState();render();}
+  function finishGame(){clearTimeout(timer);currentQuestion=null;state.phase='finished';state.ranking=ranking();state.question=null;state.joinQrVisible=false;broadcastState();render();}
 
   function resetGame(){
     clearTimeout(timer);selectedQuestions=[];currentQuestion=null;answers.clear();
     for(const p of players.values())p.score=0;
-    state={...state,phase:'lobby',questionIndex:-1,totalQuestions:0,question:null,answerCount:0,deadline:null,buzzedPlayer:null,buzzedPlayerId:null,lastResults:{}};
+    state={...state,phase:'lobby',questionIndex:-1,totalQuestions:0,question:null,answerCount:0,deadline:null,buzzedPlayer:null,buzzedPlayerId:null,lastResults:{},joinQrVisible:false};
     broadcastState();render();
   }
 
@@ -238,7 +252,7 @@
   }
 
   function render(){
-    renderMetrics();renderPlayers();
+    renderMetrics();renderPlayers();updateJoinQrButton();
     if(state.phase==='lobby'){
       hostStage.innerHTML='<div class="muted">La partie est en attente. Les joueurs peuvent déjà rejoindre la salle.</div>';
       return;
@@ -275,5 +289,6 @@
   document.getElementById('modeSelect').addEventListener('change',()=>{state.mode=document.getElementById('modeSelect').value;broadcastState();render();});
   document.getElementById('startBtn').addEventListener('click',startGame);
   document.getElementById('resetBtn').addEventListener('click',resetGame);
+  joinQrBtn?.addEventListener('click',()=>{state.joinQrVisible=!state.joinQrVisible;broadcastState();render();});
   connect();render();
 })();
