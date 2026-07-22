@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070817">
+  <title>Le Grand Quiz — Écran TV</title><link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+  <section id="lobbyView" class="shell">
+    <div class="brand"><div class="brand-logo">🧠</div><div><h1>Le Grand Quiz</h1><p>Hôpital de Jour de Manosque</p></div></div>
+    <div class="lobby-layout">
+      <main class="panel hero">
+        <div class="hero-kicker">Scannez · Rejoignez · Jouez</div>
+        <h2>PRÊTS À JOUER ?</h2>
+        <div class="muted">Code de la partie</div><div id="roomCode" class="room-code">QUIZ01</div>
+        <div id="qrPlay" class="qr-box" aria-label="QR code pour rejoindre"></div>
+        <p class="muted">Scannez avec votre téléphone, choisissez un pseudo et attendez le départ.</p>
+      </main>
+      <aside class="panel side-card">
+        <div class="actions" style="justify-content:space-between"><strong>Joueurs connectés</strong><span id="playerCount" class="badge">0</span></div>
+        <div id="playerList" class="player-list"><div class="muted">En attente des joueurs…</div></div>
+        <div style="margin-top:18px"><div class="muted" style="margin-bottom:7px">Console soignant</div><div id="qrHost" class="qr-box"></div></div>
+      </aside>
+    </div>
+  </section>
+  <section id="gameView" class="tv-stage hidden">
+    <header class="tv-top"><div class="tv-title">🧠 LE GRAND QUIZ</div><div class="tv-room"><span class="badge">Salle <strong id="roomTop">QUIZ01</strong></span></div><div id="answerCount" class="answer-count">0 réponse</div></header>
+    <main id="stage"></main>
+    <footer class="tv-bottom"><span id="connectionStatus" class="badge warn">Connexion…</span></footer>
+  </section>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="config.js"></script><script src="shared.js"></script><script src="tv.js?v=1"></script>
+</body></html>
