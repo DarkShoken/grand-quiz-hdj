@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070817">
-  <title>Le Grand Quiz — Écran TV</title><link rel="stylesheet" href="styles.css?v=2">
+  <title>Le Grand Quiz — Écran TV</title><link rel="stylesheet" href="styles.css?v=2"><link rel="stylesheet" href="tv-extra.css?v=2">
 </head>
 <body>
   <section id="lobbyView" class="shell">
@@ -35,7 +35,7 @@
   <section id="gameView" class="tv-stage hidden">
     <header class="tv-top"><div class="tv-title">🧠 LE GRAND QUIZ</div><div class="tv-room"><span class="badge">Salle <strong id="roomTop">QUIZ</strong></span></div><div id="answerCount" class="answer-count">0 réponse</div></header>
     <main id="stage"></main>
-    <footer class="tv-bottom"><span id="connectionStatus" class="badge warn">Connexion…</span></footer>
+    <footer class="tv-bottom"><button id="musicToggleGame" class="btn music-btn" type="button">🎵 Musique</button><span id="connectionStatus" class="badge warn">Connexion…</span></footer>
   </section>
 
   <div id="joinQrOverlay" class="join-qr-overlay hidden" aria-hidden="true">
