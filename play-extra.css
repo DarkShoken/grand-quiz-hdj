@@ -1,11 +1,14 @@
+.player-technical{display:none!important}
+.player-shell-game{width:min(760px,calc(100% - 8px));min-height:100dvh;margin:0 auto;padding:4px 0;display:flex;align-items:stretch}
+.player-shell-game .player-card{width:100%;min-height:calc(100dvh - 8px);padding:10px 12px;border-radius:18px;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
 .mobile-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.mobile-question{font-size:clamp(1.25rem,5vw,1.65rem);line-height:1.1;margin:9px 0 12px}
-.mobile-options{display:grid;gap:12px}
-.mobile-option{text-align:center;display:grid;place-items:center;height:clamp(100px,16vh,142px);min-height:0;line-height:1.02;padding:10px 14px;word-break:normal;overflow-wrap:normal;hyphens:none;text-wrap:balance;overflow:hidden;font-size:clamp(2rem,8vw,3.25rem);font-weight:1000;color:#fff!important;text-shadow:-1px -1px 0 #111,1px -1px 0 #111,-1px 1px 0 #111,1px 1px 0 #111,0 2px 3px rgba(0,0,0,.8)}
+.mobile-question{font-size:clamp(1.25rem,5vw,1.65rem);line-height:1.1;margin:8px 0 10px}
+.mobile-options{display:grid;gap:10px}
+.mobile-option{text-align:center;display:grid;place-items:center;height:clamp(96px,15.5dvh,140px);min-height:0;line-height:1.02;padding:9px 14px;word-break:normal;overflow-wrap:normal;hyphens:none;text-wrap:balance;overflow:hidden;font-size:clamp(2rem,8vw,3.25rem);font-weight:1000;color:#fff!important;text-shadow:-1px -1px 0 #111,1px -1px 0 #111,-1px 1px 0 #111,1px 1px 0 #111,0 2px 3px rgba(0,0,0,.8)}
 .mobile-option:nth-child(1){background:#00a1f1!important}
 .mobile-option:nth-child(2){background:#7cbb00!important}
 .mobile-option:nth-child(3){background:#ffbb00!important}
 .mobile-option:nth-child(4){background:#f65314!important}
 .mobile-option.chosen{outline:4px solid #fff;outline-offset:2px;box-shadow:0 0 0 3px rgba(0,0,0,.55)}
 .reveal-explanation{line-height:1.35}
-@media(max-height:700px){.mobile-option{height:96px}.mobile-question{margin-bottom:10px}}
+@media(max-height:700px){.player-shell-game .player-card{padding:7px 9px}.mobile-option{height:88px}.mobile-options{gap:8px}.mobile-question{margin:6px 0 8px}}
