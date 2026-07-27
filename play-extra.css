@@ -1,11 +1,11 @@
 .mobile-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.mobile-question{font-size:clamp(1.35rem,5.8vw,1.8rem);line-height:1.14;margin:12px 0 18px}
-.mobile-options{display:grid;gap:11px}
-.mobile-option{text-align:center;display:grid;place-items:center;min-height:72px;line-height:1.15;padding:13px 16px;overflow-wrap:anywhere;color:#fff!important;text-shadow:-1px -1px 0 #111,1px -1px 0 #111,-1px 1px 0 #111,1px 1px 0 #111,0 2px 3px rgba(0,0,0,.8)}
+.mobile-question{font-size:clamp(1.25rem,5vw,1.65rem);line-height:1.1;margin:9px 0 12px}
+.mobile-options{display:grid;gap:12px}
+.mobile-option{text-align:center;display:grid;place-items:center;min-height:clamp(100px,16vh,142px);line-height:1.02;padding:10px 14px;overflow-wrap:anywhere;overflow:hidden;font-size:clamp(2rem,8vw,3.25rem);font-weight:1000;color:#fff!important;text-shadow:-1px -1px 0 #111,1px -1px 0 #111,-1px 1px 0 #111,1px 1px 0 #111,0 2px 3px rgba(0,0,0,.8)}
 .mobile-option:nth-child(1){background:#00a1f1!important}
 .mobile-option:nth-child(2){background:#7cbb00!important}
 .mobile-option:nth-child(3){background:#ffbb00!important}
 .mobile-option:nth-child(4){background:#f65314!important}
 .mobile-option.chosen{outline:4px solid #fff;outline-offset:2px;box-shadow:0 0 0 3px rgba(0,0,0,.55)}
 .reveal-explanation{line-height:1.35}
-@media(max-width:420px){.mobile-option{min-height:66px;font-size:1rem}.mobile-question{font-size:1.35rem}}
+@media(max-height:700px){.mobile-option{min-height:96px}.mobile-question{margin-bottom:10px}}
