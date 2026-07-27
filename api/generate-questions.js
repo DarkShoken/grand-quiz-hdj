@@ -12,6 +12,15 @@ function normalizeKey(value) {
   return cleanText(value, 200).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+function shuffleEntries(entries) {
+  const shuffled = [...entries];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
 function extractOutputText(data) {
   return (data?.candidates?.[0]?.content?.parts || [])
     .map((part) => (typeof part?.text === "string" ? part.text : ""))
@@ -36,10 +45,22 @@ function normalizeQuestion(raw, index) {
       : [];
     const uniqueOptions = [...new Map(options.map((item) => [normalizeKey(item), item])).values()].slice(0, 4);
     if (uniqueOptions.length !== 4) return null;
+
     const wanted = normalizeKey(raw?.answer);
-    const answer = uniqueOptions.findIndex((item) => normalizeKey(item) === wanted);
-    if (answer < 0) return null;
-    return { ...base, options: uniqueOptions, answer };
+    const originalAnswer = uniqueOptions.findIndex((item) => normalizeKey(item) === wanted);
+    if (originalAnswer < 0) return null;
+
+    const shuffled = shuffleEntries(uniqueOptions.map((text, optionIndex) => ({
+      text,
+      correct: optionIndex === originalAnswer,
+    })));
+    const shuffledAnswer = shuffled.findIndex((entry) => entry.correct);
+
+    return {
+      ...base,
+      options: shuffled.map((entry) => entry.text),
+      answer: shuffledAnswer,
+    };
   }
 
   if (type === "truefalse") {
