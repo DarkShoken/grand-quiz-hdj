@@ -8,6 +8,19 @@
       .filter((item) => item.clientWidth > 0 && item.clientHeight > 0);
   }
 
+  function prepareAnswerWrapping(items) {
+    items.forEach((item) => {
+      const text = String(item.textContent || '').replace(/\s+/g, ' ').trim();
+      const singleWord = text.length > 0 && !text.includes(' ');
+
+      item.style.wordBreak = 'normal';
+      item.style.overflowWrap = 'normal';
+      item.style.hyphens = 'none';
+      item.style.whiteSpace = singleWord ? 'nowrap' : 'normal';
+      item.style.setProperty('text-wrap', singleWord ? 'nowrap' : 'balance');
+    });
+  }
+
   function setFont(items, size, lineHeight = 1.02) {
     items.forEach((item) => {
       item.style.fontSize = `${size}px`;
@@ -15,15 +28,49 @@
     });
   }
 
+  function hasTinyOrphan(item) {
+    if (item.style.whiteSpace === 'nowrap') return false;
+
+    const textNode = [...item.childNodes].find((node) =>
+      node.nodeType === Node.TEXT_NODE && String(node.textContent || '').trim()
+    );
+    if (!textNode) return false;
+
+    const text = String(textNode.textContent || '');
+    const words = [...text.matchAll(/\S+/g)];
+    if (words.length < 2) return false;
+
+    const previous = words[words.length - 2];
+    const last = words[words.length - 1];
+    if (last[0].length > 2) return false;
+
+    try {
+      const previousRange = document.createRange();
+      previousRange.setStart(textNode, previous.index);
+      previousRange.setEnd(textNode, previous.index + previous[0].length);
+      const lastRange = document.createRange();
+      lastRange.setStart(textNode, last.index);
+      lastRange.setEnd(textNode, last.index + last[0].length);
+
+      const previousRect = previousRange.getBoundingClientRect();
+      const lastRect = lastRange.getBoundingClientRect();
+      return lastRect.top > previousRect.top + 2;
+    } catch {
+      return false;
+    }
+  }
+
   function itemsFit(items) {
     return items.every((item) =>
       item.scrollHeight <= item.clientHeight + 1 &&
-      item.scrollWidth <= item.clientWidth + 1
+      item.scrollWidth <= item.clientWidth + 1 &&
+      !hasTinyOrphan(item)
     );
   }
 
   function largestFont(items, minSize, maxSize, lineHeight = 1.02) {
     if (!items.length) return minSize;
+    prepareAnswerWrapping(items);
     setFont(items, minSize, lineHeight);
 
     let low = minSize;
@@ -51,9 +98,9 @@
     let aSize = answerSize;
     let attempts = 0;
 
-    while (card.scrollHeight > card.clientHeight + 1 && attempts < 18) {
+    while ((card.scrollHeight > card.clientHeight + 1 || !itemsFit(answerItems)) && attempts < 24) {
       qSize = Math.max(24, qSize * 0.96);
-      aSize = Math.max(28, aSize * 0.96);
+      aSize = Math.max(24, aSize * 0.96);
       setFont([question], qSize, 1.02);
       setFont(answerItems, aSize, 1.02);
       attempts += 1;
@@ -67,6 +114,8 @@
     const grid = card.querySelector('.answer-grid');
     const answerItems = grid ? visibleItems(grid, ':scope > .answer-tile') : [];
     if (!question || !grid || !answerItems.length) return;
+
+    prepareAnswerWrapping(answerItems);
 
     const stage = card.parentElement;
     const meta = card.querySelector('.question-meta');
@@ -82,7 +131,7 @@
 
     if (isReveal) {
       const answerMax = Math.min(62, viewportHeight * 0.058, viewportWidth * 0.045);
-      const answerMin = Math.max(26, Math.min(34, viewportHeight * 0.033));
+      const answerMin = Math.max(24, Math.min(34, viewportHeight * 0.033));
       const answerSize = largestFont(answerItems, answerMin, answerMax);
       const questionTarget = clamp(answerSize * 0.88, 28, 52);
       question.style.height = 'auto';
@@ -127,13 +176,12 @@
 
     const questionMin = Math.max(30, Math.min(40, viewportHeight * 0.04));
     const questionMax = Math.min(76, viewportHeight * 0.078, viewportWidth * 0.06);
-    const answerMin = Math.max(32, Math.min(42, viewportHeight * 0.043));
+    const answerMin = Math.max(24, Math.min(38, viewportHeight * 0.04));
     const answerMax = Math.min(88, viewportHeight * 0.09, viewportWidth * 0.065);
 
     let questionSize = largestFont([question], questionMin, questionMax, 1.02);
     let answerSize = largestFont(answerItems, answerMin, answerMax, 1.02);
 
-    // Évite que les réponses écrasent visuellement la question, ou l’inverse.
     const answerCeiling = questionSize * 1.25;
     if (answerSize > answerCeiling) {
       answerSize = answerCeiling;
@@ -153,8 +201,10 @@
     const answerItems = visibleItems(grid, ':scope > .mobile-option');
     if (!answerItems.length) return;
 
+    prepareAnswerWrapping(answerItems);
+
     const viewportWidth = Math.max(320, window.innerWidth || 390);
-    const answerMin = Math.max(24, Math.min(30, viewportWidth * 0.067));
+    const answerMin = Math.max(21, Math.min(28, viewportWidth * 0.062));
     const answerMax = Math.max(38, Math.min(58, viewportWidth * 0.13));
     const answerSize = largestFont(answerItems, answerMin, answerMax, 1.03);
 
