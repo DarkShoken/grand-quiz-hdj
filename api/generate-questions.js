@@ -4,22 +4,18 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, Number(value) || min));
 }
 
-function cleanText(value, max = 500) {
+function cleanText(value, max = 300) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 function normalizeKey(value) {
-  return cleanText(value, 300)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+  return cleanText(value, 200).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function extractOutputText(data) {
   return (data?.candidates?.[0]?.content?.parts || [])
     .map((part) => (typeof part?.text === "string" ? part.text : ""))
-    .join("")
-    .trim();
+    .join("").trim();
 }
 
 function normalizeQuestion(raw, index) {
@@ -29,15 +25,14 @@ function normalizeQuestion(raw, index) {
     category: cleanText(raw?.category, 60) || "Culture générale",
     difficulty: ["Facile", "Moyen", "Difficile"].includes(raw?.difficulty) ? raw.difficulty : "Moyen",
     type,
-    question: cleanText(raw?.question, 280),
-    explanation: cleanText(raw?.explanation, 500),
+    question: cleanText(raw?.question, 150),
+    explanation: cleanText(raw?.explanation, 220),
   };
-
   if (!base.question || !base.explanation) return null;
 
   if (type === "mcq") {
     const options = Array.isArray(raw?.options)
-      ? raw.options.map((item) => cleanText(item, 120)).filter(Boolean)
+      ? raw.options.map((item) => cleanText(item, 80)).filter(Boolean)
       : [];
     const uniqueOptions = [...new Map(options.map((item) => [normalizeKey(item), item])).values()].slice(0, 4);
     if (uniqueOptions.length !== 4) return null;
@@ -56,10 +51,10 @@ function normalizeQuestion(raw, index) {
   if (type === "numeric") {
     const answer = Number(String(raw?.answer).replace(",", "."));
     if (!Number.isFinite(answer)) return null;
-    return { ...base, answer, unit: cleanText(raw?.unit, 40) };
+    return { ...base, answer, unit: cleanText(raw?.unit, 35) };
   }
 
-  const answerText = cleanText(raw?.answer, 180);
+  const answerText = cleanText(raw?.answer, 90);
   if (!answerText) return null;
   return { ...base, answerText };
 }
@@ -72,24 +67,20 @@ module.exports = async function handler(req, res) {
     res.status(405).json({ error: "Méthode non autorisée" });
     return;
   }
-
   if (!process.env.GEMINI_API_KEY) {
-    res.status(503).json({
-      error: "La variable GEMINI_API_KEY n'est pas configurée dans Vercel.",
-      code: "missing_api_key",
-    });
+    res.status(503).json({ error: "La variable GEMINI_API_KEY n'est pas configurée dans Vercel.", code: "missing_api_key" });
     return;
   }
 
   const body = req.body || {};
-  const count = clamp(body.count, 5, 30);
+  const count = clamp(body.count, 1, 30);
   const allowedDifficulties = ["Facile", "Moyen", "Difficile", "Mixte"];
   const difficulty = allowedDifficulties.includes(body.difficulty) ? body.difficulty : "Mixte";
   const categories = Array.isArray(body.categories)
     ? body.categories.map((item) => cleanText(item, 60)).filter(Boolean).slice(0, 15)
     : [];
   const exclude = Array.isArray(body.exclude)
-    ? body.exclude.map((item) => cleanText(item, 220)).filter(Boolean).slice(-80)
+    ? body.exclude.map((item) => cleanText(item, 180)).filter(Boolean).slice(-120)
     : [];
 
   if (!categories.length) {
@@ -122,33 +113,32 @@ module.exports = async function handler(req, res) {
   };
 
   const prompt = [
-    `Crée exactement ${count} questions de quiz en français pour un jeu télévisé convivial entre adultes.`,
+    `Crée exactement ${count} questions de quiz en français pour des adultes.`,
     `Catégories autorisées : ${categories.join(", ")}.`,
     difficulty === "Mixte"
-      ? "Répartis les difficultés de façon équilibrée entre Facile, Moyen et Difficile."
-      : `Toutes les questions doivent être de difficulté ${difficulty}.`,
-    "Varie fortement les sujets, les formulations et les types de questions. Évite les doublons, les questions pièges, les formulations ambiguës, les sujets sensibles et les faits susceptibles de changer rapidement.",
-    "Utilise uniquement des faits stables et largement vérifiables. Chaque explication doit justifier clairement la bonne réponse en une ou deux phrases.",
-    "Répartition conseillée : environ 65 % de QCM, 15 % de vrai/faux, 10 % de numérique et 10 % de buzzer.",
-    "Pour mcq : fournis exactement 4 options distinctes et place dans answer le texte exact de la bonne option.",
-    "Pour truefalse : options doit être vide et answer doit être 'true' ou 'false'.",
-    "Pour numeric : options doit être vide, answer doit contenir uniquement le nombre, et unit l'unité éventuelle.",
-    "Pour buzzer : options doit être vide et answer doit contenir la réponse courte attendue.",
-    exclude.length ? `Ne reprends aucune de ces questions déjà utilisées :\n- ${exclude.join("\n- ")}` : "",
+      ? "Répartis les difficultés entre Facile, Moyen et Difficile."
+      : `Toutes les questions sont de difficulté ${difficulty}.`,
+    "CONTRAINTE DE LISIBILITÉ TV : chaque question doit tenir en une seule phrase très claire de 110 caractères maximum. Supprime tout contexte ou détail non indispensable.",
+    "Chaque proposition de QCM doit être courte, idéalement moins de 45 caractères. N'utilise jamais de préambule comme « Parmi les propositions suivantes ».",
+    "L'explication tient en une seule phrase courte. Évite les questions ambiguës, sensibles, piégeuses ou dépendantes de l'actualité.",
+    "Varie fortement les sujets et évite les doublons. Utilise uniquement des faits stables et largement vérifiables.",
+    "Répartition conseillée : 65 % QCM, 15 % vrai/faux, 10 % numérique et 10 % buzzer.",
+    "Pour mcq : exactement 4 options distinctes et answer contient le texte exact de la bonne option.",
+    "Pour truefalse : options vide et answer vaut true ou false.",
+    "Pour numeric : options vide, answer contient seulement le nombre et unit l'unité éventuelle.",
+    "Pour buzzer : options vide et answer contient une réponse orale très courte.",
+    exclude.length ? `Questions interdites car déjà utilisées :\n- ${exclude.join("\n- ")}` : "",
   ].filter(Boolean).join("\n\n");
 
   try {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_MODEL)}:generateContent`;
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "x-goog-api-key": process.env.GEMINI_API_KEY,
-        "Content-Type": "application/json",
-      },
+      headers: { "x-goog-api-key": process.env.GEMINI_API_KEY, "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.85,
+          temperature: 0.8,
           maxOutputTokens: 15000,
           responseMimeType: "application/json",
           responseSchema: schema,
@@ -159,33 +149,23 @@ module.exports = async function handler(req, res) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       console.error("Gemini error", data);
-      const message = data?.error?.message || "La génération Gemini a échoué.";
-      res.status(response.status === 429 ? 429 : 502).json({ error: message });
+      res.status(response.status === 429 ? 429 : 502).json({ error: data?.error?.message || "La génération Gemini a échoué." });
       return;
     }
 
     const outputText = extractOutputText(data);
     if (!outputText) {
-      const blockReason = data?.promptFeedback?.blockReason;
-      res.status(502).json({
-        error: blockReason
-          ? `Gemini a bloqué la demande (${blockReason}).`
-          : "Gemini n'a renvoyé aucune question exploitable.",
-      });
+      const reason = data?.promptFeedback?.blockReason;
+      res.status(502).json({ error: reason ? `Gemini a bloqué la demande (${reason}).` : "Gemini n'a renvoyé aucune question exploitable." });
       return;
     }
 
     const parsed = JSON.parse(outputText);
-    const questions = (parsed?.questions || [])
-      .map(normalizeQuestion)
-      .filter(Boolean)
-      .slice(0, count);
-
-    if (questions.length < Math.min(5, count)) {
-      res.status(502).json({ error: "Trop peu de questions valides ont été générées par Gemini." });
+    const questions = (parsed?.questions || []).map(normalizeQuestion).filter(Boolean).slice(0, count);
+    if (questions.length < Math.min(1, count)) {
+      res.status(502).json({ error: "Aucune question valide n'a été générée par Gemini." });
       return;
     }
-
     res.status(200).json({ questions, model: DEFAULT_MODEL, provider: "gemini" });
   } catch (error) {
     console.error("Gemini question generation failed", error);
