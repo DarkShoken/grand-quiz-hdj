@@ -24,19 +24,50 @@
     event.currentTarget.classList.toggle('flipped');
   });
 
-  function updateMusicButtons(){
-    const enabled=Boolean(window.GrandQuizMusic?.enabled);
-    musicButtons.forEach((button)=>{
-      button.textContent=enabled?'🔇 Couper la musique':'🎵 Activer la musique';
-    });
+  function setMusicButtonsText(text) {
+    musicButtons.forEach((button) => { button.textContent = text; });
   }
 
-  async function toggleMusic(){
-    await window.GrandQuizMusic?.toggle();
-    window.GrandQuizMusic?.sync(currentState || { phase:'lobby' });
+  function updateMusicButtons() {
+    const engine = window.GrandQuizMusic;
+    if (!engine?.available) {
+      setMusicButtonsText('⚠️ Audio indisponible');
+      musicButtons.forEach((button) => { button.disabled = true; });
+      return;
+    }
+    musicButtons.forEach((button) => { button.disabled = false; });
+    setMusicButtonsText(engine.enabled ? '🔇 Couper la musique' : '🎵 Activer la musique');
+  }
+
+  async function toggleMusic() {
+    const engine = window.GrandQuizMusic;
+    if (!engine?.available) {
+      updateMusicButtons();
+      return;
+    }
+
+    const wasEnabled = engine.enabled;
+    engine.sync(currentState || { phase: 'lobby' });
+    musicButtons.forEach((button) => { button.disabled = true; });
+
+    try {
+      const result = await engine.toggle();
+      if (!wasEnabled && !result) {
+        setMusicButtonsText('⚠️ Touchez à nouveau pour le son');
+        window.setTimeout(updateMusicButtons, 1800);
+        return;
+      }
+    } catch (error) {
+      console.error('Activation audio impossible', error);
+      setMusicButtonsText('⚠️ Audio bloqué par le navigateur');
+      window.setTimeout(updateMusicButtons, 2200);
+      return;
+    }
+
     updateMusicButtons();
   }
-  musicButtons.forEach((button)=>button.addEventListener('click',toggleMusic));
+
+  musicButtons.forEach((button) => button.addEventListener('click', toggleMusic));
   updateMusicButtons();
 
   const transport = G.createTransport({ room, role:'screen', onMessage: handleMessage, onStatus: ({ ready, mode }) => {
