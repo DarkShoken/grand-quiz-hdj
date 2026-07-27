@@ -1,31 +1,39 @@
 (() => {
   let scheduledFrame = null;
 
-  function fitGroup(group, itemSelector, minSize, maxSize) {
-    const items = [...group.querySelectorAll(`:scope > ${itemSelector}`)]
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+  function visibleItems(root, selector) {
+    return [...root.querySelectorAll(selector)]
       .filter((item) => item.clientWidth > 0 && item.clientHeight > 0);
-    if (!items.length) return;
+  }
 
+  function setFont(items, size, lineHeight = 1.02) {
     items.forEach((item) => {
-      item.style.fontSize = `${minSize}px`;
-      item.style.lineHeight = '1.02';
+      item.style.fontSize = `${size}px`;
+      item.style.lineHeight = String(lineHeight);
     });
+  }
 
-    const fits = (size) => {
-      items.forEach((item) => { item.style.fontSize = `${size}px`; });
-      return items.every((item) =>
-        item.scrollHeight <= item.clientHeight + 1 &&
-        item.scrollWidth <= item.clientWidth + 1
-      );
-    };
+  function itemsFit(items) {
+    return items.every((item) =>
+      item.scrollHeight <= item.clientHeight + 1 &&
+      item.scrollWidth <= item.clientWidth + 1
+    );
+  }
+
+  function largestFont(items, minSize, maxSize, lineHeight = 1.02) {
+    if (!items.length) return minSize;
+    setFont(items, minSize, lineHeight);
 
     let low = minSize;
     let high = maxSize;
     let best = minSize;
 
-    while (high - low > 0.4) {
+    while (high - low > 0.35) {
       const middle = (low + high) / 2;
-      if (fits(middle)) {
+      setFont(items, middle, lineHeight);
+      if (itemsFit(items)) {
         best = middle;
         low = middle;
       } else {
@@ -33,34 +41,143 @@
       }
     }
 
-    items.forEach((item) => {
-      item.style.fontSize = `${Math.floor(best * 10) / 10}px`;
-    });
+    best = Math.floor(best * 10) / 10;
+    setFont(items, best, lineHeight);
+    return best;
   }
 
-  function fitAllAnswers() {
+  function shrinkUntilCardFits(card, question, answerItems, questionSize, answerSize) {
+    let qSize = questionSize;
+    let aSize = answerSize;
+    let attempts = 0;
+
+    while (card.scrollHeight > card.clientHeight + 1 && attempts < 18) {
+      qSize = Math.max(24, qSize * 0.96);
+      aSize = Math.max(28, aSize * 0.96);
+      setFont([question], qSize, 1.02);
+      setFont(answerItems, aSize, 1.02);
+      attempts += 1;
+    }
+
+    return { questionSize: qSize, answerSize: aSize };
+  }
+
+  function fitTvQuestionCard(card) {
+    const question = card.querySelector('.question-text');
+    const grid = card.querySelector('.answer-grid');
+    const answerItems = grid ? visibleItems(grid, ':scope > .answer-tile') : [];
+    if (!question || !grid || !answerItems.length) return;
+
+    const stage = card.parentElement;
+    const meta = card.querySelector('.question-meta');
+    const timer = card.querySelector('.timer-wrap');
+    const isReveal = card.classList.contains('reveal-card');
+    const viewportHeight = Math.max(480, window.innerHeight || 720);
+    const viewportWidth = Math.max(640, window.innerWidth || 1280);
+
+    question.style.display = 'grid';
+    question.style.placeItems = 'center';
+    question.style.width = '100%';
+    question.style.overflow = 'hidden';
+
+    if (isReveal) {
+      const answerMax = Math.min(62, viewportHeight * 0.058, viewportWidth * 0.045);
+      const answerMin = Math.max(26, Math.min(34, viewportHeight * 0.033));
+      const answerSize = largestFont(answerItems, answerMin, answerMax);
+      const questionTarget = clamp(answerSize * 0.88, 28, 52);
+      question.style.height = 'auto';
+      question.style.fontSize = `${questionTarget}px`;
+      question.style.lineHeight = '1.03';
+      return;
+    }
+
+    const cardStyle = getComputedStyle(card);
+    const paddingY = parseFloat(cardStyle.paddingTop || 0) + parseFloat(cardStyle.paddingBottom || 0);
+    const stageHeight = Math.max(360, stage?.clientHeight || card.clientHeight || viewportHeight * 0.82);
+    const metaHeight = meta?.getBoundingClientRect().height || 0;
+    const timerHeight = timer?.getBoundingClientRect().height || 0;
+    const structuralGaps = clamp(stageHeight * 0.025, 14, 24);
+    const available = Math.max(250, stageHeight - paddingY - metaHeight - timerHeight - structuralGaps);
+
+    const questionLength = question.textContent.trim().length;
+    const longestAnswer = Math.max(...answerItems.map((item) => item.textContent.trim().length), 1);
+    const answerCount = answerItems.length;
+
+    let questionShare = 0.34;
+    if (questionLength > 105) questionShare = 0.43;
+    else if (questionLength > 78) questionShare = 0.39;
+    else if (questionLength > 52) questionShare = 0.36;
+    else if (questionLength < 35) questionShare = 0.31;
+
+    if (longestAnswer > 55) questionShare -= 0.035;
+    else if (longestAnswer < 24) questionShare += 0.025;
+    if (answerCount <= 2) questionShare = Math.max(questionShare, 0.43);
+    questionShare = clamp(questionShare, 0.29, 0.46);
+
+    const contentGap = clamp(stageHeight * 0.012, 8, 14);
+    let questionHeight = Math.round(available * questionShare);
+    questionHeight = clamp(questionHeight, 92, Math.max(92, available - 190));
+    const gridHeight = Math.max(170, available - questionHeight - contentGap);
+
+    question.style.height = `${questionHeight}px`;
+    question.style.marginTop = '0';
+    question.style.marginBottom = `${contentGap}px`;
+    grid.style.height = `${gridHeight}px`;
+    grid.style.maxHeight = 'none';
+
+    const questionMin = Math.max(30, Math.min(40, viewportHeight * 0.04));
+    const questionMax = Math.min(76, viewportHeight * 0.078, viewportWidth * 0.06);
+    const answerMin = Math.max(32, Math.min(42, viewportHeight * 0.043));
+    const answerMax = Math.min(88, viewportHeight * 0.09, viewportWidth * 0.065);
+
+    let questionSize = largestFont([question], questionMin, questionMax, 1.02);
+    let answerSize = largestFont(answerItems, answerMin, answerMax, 1.02);
+
+    // Évite que les réponses écrasent visuellement la question, ou l’inverse.
+    const answerCeiling = questionSize * 1.25;
+    if (answerSize > answerCeiling) {
+      answerSize = answerCeiling;
+      setFont(answerItems, answerSize, 1.02);
+    }
+
+    const questionCeiling = answerSize * 1.16;
+    if (questionSize > questionCeiling) {
+      questionSize = questionCeiling;
+      setFont([question], questionSize, 1.02);
+    }
+
+    shrinkUntilCardFits(card, question, answerItems, questionSize, answerSize);
+  }
+
+  function fitMobileCard(grid) {
+    const answerItems = visibleItems(grid, ':scope > .mobile-option');
+    if (!answerItems.length) return;
+
+    const viewportWidth = Math.max(320, window.innerWidth || 390);
+    const answerMin = Math.max(24, Math.min(30, viewportWidth * 0.067));
+    const answerMax = Math.max(38, Math.min(58, viewportWidth * 0.13));
+    const answerSize = largestFont(answerItems, answerMin, answerMax, 1.03);
+
+    const card = grid.closest('.player-card');
+    const question = card?.querySelector('.mobile-question');
+    if (question) {
+      const questionSize = clamp(answerSize * 0.82, 28, 46);
+      question.style.fontSize = `${questionSize}px`;
+      question.style.lineHeight = '1.08';
+    }
+  }
+
+  function fitAll() {
     scheduledFrame = null;
 
-    const viewportHeight = Math.max(480, window.innerHeight || 720);
-    const viewportWidth = Math.max(320, window.innerWidth || 1280);
-    const tvMax = Math.max(52, Math.min(82, viewportHeight * 0.078, viewportWidth * 0.055));
-    const tvMin = Math.max(30, Math.min(40, viewportHeight * 0.038));
-    const mobileMax = Math.max(34, Math.min(52, viewportWidth * 0.105));
-    const mobileMin = Math.max(23, Math.min(30, viewportWidth * 0.065));
-
-    document.querySelectorAll('.answer-grid').forEach((grid) => {
-      fitGroup(grid, '.answer-tile', tvMin, tvMax);
-    });
-
-    document.querySelectorAll('.mobile-options').forEach((grid) => {
-      fitGroup(grid, '.mobile-option', mobileMin, mobileMax);
-    });
+    document.querySelectorAll('.question-card').forEach(fitTvQuestionCard);
+    document.querySelectorAll('.mobile-options').forEach(fitMobileCard);
   }
 
   function scheduleFit() {
     if (scheduledFrame !== null) cancelAnimationFrame(scheduledFrame);
     scheduledFrame = requestAnimationFrame(() => {
-      requestAnimationFrame(fitAllAnswers);
+      requestAnimationFrame(fitAll);
     });
   }
 
