@@ -8,4 +8,9 @@
 .answer-player span,.answer-value span{font-size:.78rem;color:var(--muted)}
 .answer-value{text-align:right;min-width:0;max-width:65%}
 .answer-value strong{overflow-wrap:anywhere}
-@media(max-width:620px){.answer-log-detailed{display:grid}.answer-value{text-align:left;max-width:none}}
+.category-quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:9px 0 8px}
+.category-quick-actions .btn{padding:8px 12px;font-size:.86rem}
+.host-auto-next{display:flex;align-items:center;gap:14px;margin:18px 0;padding:13px 15px;border-radius:17px;background:rgba(76,201,240,.09);border:1px solid rgba(76,201,240,.24)}
+.host-auto-next-circle{flex:0 0 58px;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;border:5px solid var(--cyan);background:#090c1d;font-size:1.45rem;font-weight:1000}
+.host-auto-next>div:last-child{display:grid;gap:3px}.host-auto-next span{color:var(--muted);font-size:.86rem}
+@media(max-width:620px){.answer-log-detailed{display:grid}.answer-value{text-align:left;max-width:none}.host-auto-next{align-items:flex-start}.host-auto-next-circle{flex-basis:52px;width:52px;height:52px}}
