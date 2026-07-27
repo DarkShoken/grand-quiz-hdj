@@ -3,7 +3,7 @@
   document.getElementById('roomLabel').textContent=room;
   const storageKey=`grandquiz:${room}`;
   let saved={};try{saved=JSON.parse(localStorage.getItem(storageKey)||'{}')}catch{}
-  let playerId=saved.playerId||G.uid(),name=saved.name||'',team=saved.team||'Orange',joined=false,currentState=null,answeredQuestionId=null,pendingQuestionId=null;
+  let playerId=saved.playerId||G.uid(),name=saved.name||'',draftName=saved.name||'',team=saved.team||'Orange',joined=false,currentState=null,answeredQuestionId=null,pendingQuestionId=null;
   let transport=null;
 
   transport=G.createTransport({
@@ -69,15 +69,36 @@
   function changeTeam(nextTeam){team=nextTeam;persist();transport.send('join',{playerId,name,team});render();}
 
   function renderJoin(){
+    const previousInput=document.getElementById('nameInput');
+    const wasFocused=document.activeElement===previousInput;
+    const selectionStart=wasFocused?previousInput.selectionStart:null;
+    const selectionEnd=wasFocused?previousInput.selectionEnd:null;
+    if(previousInput)draftName=previousInput.value.slice(0,24);
+
     const teams=currentState?.mode==='teams';
-    app.innerHTML=`<div class="join-title">Rejoins la partie</div><div class="join-sub">Choisis ton pseudo${teams?' et ton équipe':''}</div><div class="field"><label for="nameInput">Pseudo</label><input id="nameInput" maxlength="24" value="${G.escapeHtml(name)}" placeholder="Ex : Magali"></div>${teams?`<div style="margin-top:14px"><strong>Équipe</strong><div class="team-choice" style="margin-top:8px"><button id="teamOrange" class="team-btn orange ${team==='Orange'?'selected':''}">🟠 Orange</button><button id="teamBlue" class="team-btn blue ${team==='Bleue'?'selected':''}">🔵 Bleue</button></div></div>`:''}<button id="joinBtn" class="btn primary big" style="width:100%;margin-top:16px">JOUER 🚀</button>`;
-    document.getElementById('teamOrange')?.addEventListener('click',()=>{team='Orange';renderJoin()});
-    document.getElementById('teamBlue')?.addEventListener('click',()=>{team='Bleue';renderJoin()});
+    app.innerHTML=`<div class="join-title">Rejoins la partie</div><div class="join-sub">Choisis ton pseudo${teams?' et ton équipe':''}</div><div class="field"><label for="nameInput">Pseudo</label><input id="nameInput" maxlength="24" value="${G.escapeHtml(draftName)}" placeholder="Ex : Magali" autocomplete="nickname" autocapitalize="words"></div>${teams?`<div style="margin-top:14px"><strong>Équipe</strong><div class="team-choice" style="margin-top:8px"><button id="teamOrange" class="team-btn orange ${team==='Orange'?'selected':''}">🟠 Orange</button><button id="teamBlue" class="team-btn blue ${team==='Bleue'?'selected':''}">🔵 Bleue</button></div></div>`:''}<button id="joinBtn" class="btn primary big" style="width:100%;margin-top:16px">JOUER 🚀</button>`;
+
+    const nameInput=document.getElementById('nameInput');
+    nameInput.addEventListener('input',()=>{draftName=nameInput.value.slice(0,24);});
+    nameInput.addEventListener('keydown',(event)=>{
+      if(event.key==='Enter')document.getElementById('joinBtn')?.click();
+    });
+
+    document.getElementById('teamOrange')?.addEventListener('click',()=>{draftName=nameInput.value.slice(0,24);team='Orange';renderJoin();});
+    document.getElementById('teamBlue')?.addEventListener('click',()=>{draftName=nameInput.value.slice(0,24);team='Bleue';renderJoin();});
     document.getElementById('joinBtn').addEventListener('click',()=>{
-      name=document.getElementById('nameInput').value.trim().slice(0,24);
-      if(!name)return;
+      draftName=nameInput.value.slice(0,24);
+      name=draftName.trim();
+      if(!name){nameInput.focus();return;}
+      draftName=name;
       join();
     });
+
+    if(wasFocused){
+      nameInput.focus({preventScroll:true});
+      const max=nameInput.value.length;
+      nameInput.setSelectionRange(Math.min(selectionStart??max,max),Math.min(selectionEnd??max,max));
+    }
   }
 
   function alreadyAnswered(){
