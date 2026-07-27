@@ -1,4 +1,4 @@
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5-mini";
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, Number(value) || min));
@@ -16,19 +16,16 @@ function normalizeKey(value) {
 }
 
 function extractOutputText(data) {
-  if (typeof data?.output_text === "string") return data.output_text;
-  for (const item of data?.output || []) {
-    for (const content of item?.content || []) {
-      if (content?.type === "output_text" && typeof content.text === "string") return content.text;
-    }
-  }
-  return "";
+  return (data?.candidates?.[0]?.content?.parts || [])
+    .map((part) => (typeof part?.text === "string" ? part.text : ""))
+    .join("")
+    .trim();
 }
 
 function normalizeQuestion(raw, index) {
   const type = ["mcq", "truefalse", "numeric", "buzzer"].includes(raw?.type) ? raw.type : "mcq";
   const base = {
-    id: `ai-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `gemini-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
     category: cleanText(raw?.category, 60) || "Culture générale",
     difficulty: ["Facile", "Moyen", "Difficile"].includes(raw?.difficulty) ? raw.difficulty : "Moyen",
     type,
@@ -76,9 +73,9 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     res.status(503).json({
-      error: "La variable OPENAI_API_KEY n'est pas configurée dans Vercel.",
+      error: "La variable GEMINI_API_KEY n'est pas configurée dans Vercel.",
       code: "missing_api_key",
     });
     return;
@@ -107,8 +104,8 @@ module.exports = async function handler(req, res) {
     properties: {
       questions: {
         type: "array",
-        minItems: 1,
-        maxItems: 25,
+        minItems: Math.min(5, count),
+        maxItems: count,
         items: {
           type: "object",
           additionalProperties: false,
@@ -134,8 +131,9 @@ module.exports = async function handler(req, res) {
     difficulty === "Mixte"
       ? "Répartis les difficultés de façon équilibrée entre Facile, Moyen et Difficile."
       : `Toutes les questions doivent être de difficulté ${difficulty}.`,
-    "Varie les formulations, les sujets et les types de questions. Évite les doublons, les questions pièges, les formulations ambiguës, les sujets sensibles et les faits susceptibles de changer rapidement.",
-    "Utilise surtout des faits stables, connus et vérifiables. Chaque explication doit justifier clairement la bonne réponse en une ou deux phrases.",
+    "Varie fortement les sujets, les formulations et les types de questions. Évite les doublons, les questions pièges, les formulations ambiguës, les sujets sensibles et les faits susceptibles de changer rapidement.",
+    "Utilise uniquement des faits stables et largement vérifiables. Chaque explication doit justifier clairement la bonne réponse en une ou deux phrases.",
+    "Répartition conseillée : environ 65 % de QCM, 15 % de vrai/faux, 10 % de numérique et 10 % de buzzer.",
     "Pour mcq : fournis exactement 4 options distinctes et place dans answer le texte exact de la bonne option.",
     "Pour truefalse : options doit être vide et answer doit être 'true' ou 'false'.",
     "Pour numeric : options doit être vide, answer doit contenir uniquement le nombre, et unit l'unité éventuelle.",
@@ -144,38 +142,44 @@ module.exports = async function handler(req, res) {
   ].filter(Boolean).join("\n\n");
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_MODEL)}:generateContent`;
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "x-goog-api-key": process.env.GEMINI_API_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        instructions: "Tu es un concepteur de questions de quiz rigoureux. Respecte strictement le schéma JSON et n'invente pas de faits incertains.",
-        input: prompt,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "grand_quiz_questions",
-            strict: true,
-            schema,
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.85,
+          maxOutputTokens: 12000,
+          responseFormat: {
+            text: {
+              mimeType: "application/json",
+              schema,
+            },
           },
         },
-        max_output_tokens: 8000,
       }),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      console.error("OpenAI error", data);
-      res.status(502).json({ error: data?.error?.message || "La génération IA a échoué." });
+      console.error("Gemini error", data);
+      const message = data?.error?.message || "La génération Gemini a échoué.";
+      res.status(response.status === 429 ? 429 : 502).json({ error: message });
       return;
     }
 
     const outputText = extractOutputText(data);
     if (!outputText) {
-      res.status(502).json({ error: "L'IA n'a renvoyé aucune question exploitable." });
+      const blockReason = data?.promptFeedback?.blockReason;
+      res.status(502).json({
+        error: blockReason
+          ? `Gemini a bloqué la demande (${blockReason}).`
+          : "Gemini n'a renvoyé aucune question exploitable.",
+      });
       return;
     }
 
@@ -186,13 +190,13 @@ module.exports = async function handler(req, res) {
       .slice(0, count);
 
     if (questions.length < Math.min(5, count)) {
-      res.status(502).json({ error: "Trop peu de questions valides ont été générées." });
+      res.status(502).json({ error: "Trop peu de questions valides ont été générées par Gemini." });
       return;
     }
 
-    res.status(200).json({ questions, model: DEFAULT_MODEL });
+    res.status(200).json({ questions, model: DEFAULT_MODEL, provider: "gemini" });
   } catch (error) {
-    console.error("Question generation failed", error);
-    res.status(500).json({ error: "Impossible de générer les questions pour le moment." });
+    console.error("Gemini question generation failed", error);
+    res.status(500).json({ error: "Impossible de générer les questions avec Gemini pour le moment." });
   }
 };
