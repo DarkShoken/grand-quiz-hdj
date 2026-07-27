@@ -15,10 +15,13 @@
   let team = saved.team || 'Orange';
   let joined = false;
   let currentState = null;
-  let answeredQuestionId = null;
+  let submittedQuestionId = null;
+  let selectedAnswerQuestionId = null;
+  let selectedAnswerValue = null;
   let pendingQuestionId = null;
   let answerDraftQuestionId = null;
   let answerDraftValue = '';
+  let answerNotice = '';
   let heartbeatTimer = null;
   let transport = null;
 
@@ -62,28 +65,55 @@
     render();
   }
 
+  function hasOwnAnswer(state, id) {
+    return Boolean(state?.playerAnswers && Object.prototype.hasOwnProperty.call(state.playerAnswers, id));
+  }
+
   function handleMessage(message) {
     if (message.type === 'state') {
       const previousQuestionId = currentState?.question?.id || null;
       currentState = message.payload;
       const nextQuestionId = currentState?.question?.id || null;
+
       if (previousQuestionId !== nextQuestionId) {
+        submittedQuestionId = null;
+        selectedAnswerQuestionId = nextQuestionId;
+        selectedAnswerValue = null;
         answerDraftQuestionId = nextQuestionId;
         answerDraftValue = '';
         pendingQuestionId = null;
+        answerNotice = '';
       }
+
       if (currentState.mode !== 'teams') team = 'Orange';
-      if (currentState.question?.id && currentState.answeredPlayerIds?.includes(playerId)) answeredQuestionId = currentState.question.id;
+
+      if (nextQuestionId && hasOwnAnswer(currentState, playerId)) {
+        const storedValue = currentState.playerAnswers[playerId];
+        submittedQuestionId = nextQuestionId;
+        selectedAnswerQuestionId = nextQuestionId;
+        selectedAnswerValue = String(storedValue);
+        if (currentState.question?.type === 'numeric') answerDraftValue = String(storedValue);
+      } else if (nextQuestionId && currentState.answeredPlayerIds?.includes(playerId)) {
+        submittedQuestionId = nextQuestionId;
+      }
+
+      if (currentState.phase !== 'question') pendingQuestionId = null;
       render();
       return;
     }
+
     if (message.type === 'answer_ack') {
       const payload = message.payload || {};
       if (payload.playerId !== playerId) return;
       if (payload.accepted) {
-        answeredQuestionId = payload.questionId;
-        pendingQuestionId = null;
-      } else if (payload.questionId === pendingQuestionId) pendingQuestionId = null;
+        submittedQuestionId = payload.questionId;
+        answerNotice = '';
+      } else if (payload.reason === 'closed') {
+        answerNotice = '⏱ Temps écoulé';
+      } else {
+        answerNotice = '⚠️ Réponse non enregistrée';
+      }
+      if (payload.questionId === pendingQuestionId) pendingQuestionId = null;
       render();
     }
   }
@@ -138,17 +168,47 @@
     }
   }
 
-  function alreadyAnswered() {
+  function hasSubmitted() {
     const questionId = currentState?.question?.id;
-    return Boolean(questionId && (answeredQuestionId === questionId || currentState?.answeredPlayerIds?.includes(playerId)));
+    return Boolean(questionId && (
+      submittedQuestionId === questionId ||
+      currentState?.answeredPlayerIds?.includes(playerId)
+    ));
+  }
+
+  function isSelected(value) {
+    return selectedAnswerQuestionId === currentState?.question?.id && String(selectedAnswerValue) === String(value);
   }
 
   async function sendAnswer(value) {
     const questionId = currentState?.question?.id;
-    if (!questionId || alreadyAnswered() || pendingQuestionId === questionId) return;
-    pendingQuestionId = questionId; renderQuestion();
+    if (!questionId || currentState?.phase !== 'question' || pendingQuestionId === questionId) return;
+    if (currentState.deadline && Date.now() >= Number(currentState.deadline)) {
+      answerNotice = '⏱ Temps écoulé';
+      renderQuestion();
+      return;
+    }
+
+    const previousQuestionId = selectedAnswerQuestionId;
+    const previousValue = selectedAnswerValue;
+    const previousSubmitted = submittedQuestionId;
+
+    selectedAnswerQuestionId = questionId;
+    selectedAnswerValue = String(value);
+    submittedQuestionId = questionId;
+    pendingQuestionId = questionId;
+    answerNotice = '';
+    renderQuestion();
+
     const result = await transport.send('answer', { playerId, name, team, questionId, value });
-    if (result === false && pendingQuestionId === questionId) { pendingQuestionId = null; renderQuestion(); }
+    if (result === false && pendingQuestionId === questionId) {
+      pendingQuestionId = null;
+      selectedAnswerQuestionId = previousQuestionId;
+      selectedAnswerValue = previousValue;
+      submittedQuestionId = previousSubmitted;
+      answerNotice = '⚠️ Réponse non enregistrée';
+      renderQuestion();
+    }
   }
 
   function renderQuestion() {
@@ -160,29 +220,40 @@
     const end = wasFocused ? oldInput.selectionEnd : null;
     if (oldInput && answerDraftQuestionId === question.id) answerDraftValue = oldInput.value;
     if (answerDraftQuestionId !== question.id) { answerDraftQuestionId = question.id; answerDraftValue = ''; }
-    const locked = alreadyAnswered();
+
+    const submitted = hasSubmitted();
     const pending = pendingQuestionId === question.id;
+    const statusLabel = answerNotice || (pending ? '⏳ Enregistrement…' : submitted ? '✅ Modifiable' : question.category);
     let controls = '';
+
     if (question.type === 'mcq' || question.type === 'truefalse') {
-      controls = `<div class="mobile-options">${question.options.map((option, index) => `<button class="mobile-option ${locked || pending ? 'locked' : ''}" data-value="${question.type === 'truefalse' ? (index === 0 ? 'true' : 'false') : index}" ${locked || pending ? 'disabled' : ''}>${G.escapeHtml(option)}</button>`).join('')}</div>`;
+      controls = `<div class="mobile-options">${question.options.map((option, index) => {
+        const value = question.type === 'truefalse' ? (index === 0 ? 'true' : 'false') : index;
+        return `<button class="mobile-option ${isSelected(value) ? 'chosen' : ''} ${pending ? 'locked' : ''}" data-value="${value}" ${pending ? 'disabled' : ''}>${G.escapeHtml(option)}</button>`;
+      }).join('')}</div>`;
     } else if (question.type === 'numeric') {
-      controls = `<div class="numeric-row"><input id="numericInput" inputmode="decimal" type="text" value="${G.escapeHtml(answerDraftValue)}" placeholder="Ta réponse" autocomplete="off" ${locked || pending ? 'disabled' : ''}><button id="numericBtn" class="btn green" ${locked || pending ? 'disabled' : ''}>Envoyer</button></div>`;
+      controls = `<div class="numeric-row"><input id="numericInput" inputmode="decimal" type="text" value="${G.escapeHtml(answerDraftValue)}" placeholder="Ta réponse" autocomplete="off" ${pending ? 'disabled' : ''}><button id="numericBtn" class="btn green" ${pending ? 'disabled' : ''}>${submitted ? 'Modifier' : 'Envoyer'}</button></div>`;
     } else {
       controls = `<button id="buzzBtn" class="big-buzzer" ${currentState.buzzedPlayerId ? 'disabled' : ''}>BUZZ !</button><div class="feedback">${currentState.buzzedPlayer ? `🚨 ${G.escapeHtml(currentState.buzzedPlayer)} a été le plus rapide !` : 'Appuie dès que tu connais la réponse.'}</div>`;
     }
-    app.innerHTML = `<div class="mobile-meta"><span class="badge">Question ${currentState.questionNumber}/${currentState.totalQuestions}</span><span class="badge">${G.escapeHtml(question.category)}</span></div><div class="mobile-question">${G.escapeHtml(question.question)}</div>${controls}${pending ? '<div class="feedback">⏳ Envoi…</div>' : ''}${locked ? '<div class="feedback">✅ Réponse enregistrée. Regarde l’écran !</div>' : ''}`;
+
+    app.innerHTML = `<div class="mobile-meta"><span class="badge">Question ${currentState.questionNumber}/${currentState.totalQuestions}</span><span class="badge">${G.escapeHtml(statusLabel)}</span></div><div class="mobile-question">${G.escapeHtml(question.question)}</div>${controls}`;
+
     document.querySelectorAll('.mobile-option').forEach((button) => button.addEventListener('click', () => sendAnswer(button.dataset.value)));
     const input = document.getElementById('numericInput');
     input?.addEventListener('input', () => { answerDraftQuestionId = question.id; answerDraftValue = input.value; });
     const submitNumeric = () => {
-      answerDraftValue = input.value; const value = answerDraftValue.trim();
+      if (!input) return;
+      answerDraftValue = input.value;
+      const value = answerDraftValue.trim();
       if (value !== '') sendAnswer(value.replace(',', '.'));
     };
     document.getElementById('numericBtn')?.addEventListener('click', submitNumeric);
     input?.addEventListener('keydown', (event) => { if (event.key === 'Enter') submitNumeric(); });
     document.getElementById('buzzBtn')?.addEventListener('click', () => transport.send('buzz', { playerId, name, team, questionId: question.id }));
     if (input && wasFocused && !input.disabled) {
-      input.focus({ preventScroll: true }); const max = input.value.length;
+      input.focus({ preventScroll: true });
+      const max = input.value.length;
       input.setSelectionRange(Math.min(start ?? max, max), Math.min(end ?? max, max));
     }
   }
