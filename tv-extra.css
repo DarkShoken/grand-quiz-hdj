@@ -30,7 +30,12 @@ body{min-height:100dvh}
 .question-meta{margin-bottom:clamp(5px,1vh,10px)}
 .question-text{font-size:clamp(1.65rem,4.1vh,3.7rem);line-height:1.04;margin:clamp(5px,1.2vh,12px) auto clamp(9px,1.8vh,18px);max-width:1120px}
 .answer-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(8px,1.4vh,13px);min-height:0;max-height:43vh}
-.answer-tile{min-height:clamp(66px,9.2vh,108px);padding:clamp(9px,1.5vh,16px);font-size:clamp(1.05rem,2.55vh,2rem);line-height:1.08;text-align:center;display:grid;place-items:center;overflow-wrap:anywhere}
+.answer-tile{min-height:clamp(66px,9.2vh,108px);padding:clamp(9px,1.5vh,16px);font-size:clamp(1.05rem,2.55vh,2rem);line-height:1.08;text-align:center;display:grid;place-items:center;overflow-wrap:anywhere;color:#fff!important;text-shadow:-1px -1px 0 #111,1px -1px 0 #111,-1px 1px 0 #111,1px 1px 0 #111,0 2px 3px rgba(0,0,0,.8)}
+.answer-tile.a{background:#00a1f1!important}
+.answer-tile.b{background:#7cbb00!important}
+.answer-tile.c{background:#ffbb00!important}
+.answer-tile.d{background:#f65314!important}
+.answer-tile.correct{outline:6px solid #fff;outline-offset:2px;box-shadow:0 0 0 3px rgba(0,0,0,.5),0 0 24px rgba(255,255,255,.55)}
 .question-card.compact .question-text{font-size:clamp(1.45rem,3.35vh,3rem);margin-bottom:10px}
 .question-card.compact .answer-tile{font-size:clamp(1rem,2.15vh,1.65rem);min-height:clamp(62px,8.4vh,92px)}
 .question-card.ultra-compact .question-text{font-size:clamp(1.25rem,2.85vh,2.45rem);margin:4px auto 8px}
