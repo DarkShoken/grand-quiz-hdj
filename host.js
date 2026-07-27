@@ -1,6 +1,7 @@
 (() => {
   const G = window.GrandQuiz;
   const BANK = window.GRAND_QUIZ_QUESTIONS || [];
+  const EXTRA_CATEGORIES = window.GRAND_QUIZ_CATEGORIES || [];
   const USED_QUESTIONS_KEY = 'grand-quiz-used-questions-v1';
 
   let room = G.cleanRoom(G.qs('room', 'QUIZ'));
@@ -41,9 +42,9 @@
   roomInput.value = room;
   G.setRoomInUrl(room);
 
-  const categories = [...new Set(BANK.map((q) => q.category))].sort();
+  const categories = [...new Set([...EXTRA_CATEGORIES, ...BANK.map((question) => question.category)])].sort((a, b) => a.localeCompare(b, 'fr'));
   document.getElementById('categories').innerHTML = categories
-    .map((category, index) => `<label class="check"><input type="checkbox" value="${G.escapeHtml(category)}" ${index < 10 ? 'checked' : ''}> <span>${G.escapeHtml(category)}</span></label>`)
+    .map((category, index) => `<label class="check"><input type="checkbox" value="${G.escapeHtml(category)}" ${index < 12 ? 'checked' : ''}> <span>${G.escapeHtml(category)}</span></label>`)
     .join('');
 
   function normalizeQuestionText(value) {
@@ -66,7 +67,7 @@
 
   function rememberQuestions(questions) {
     const previous = loadUsedQuestions();
-    const additions = questions.map((q) => String(q.question || '').trim()).filter(Boolean);
+    const additions = questions.map((question) => String(question.question || '').trim()).filter(Boolean);
     const seen = new Set();
     const merged = [...previous, ...additions].filter((question) => {
       const key = normalizeQuestionText(question);
@@ -204,6 +205,40 @@
     return { correct, points };
   }
 
+  function expectedAnswerLabel(question) {
+    if (!question) return '—';
+    if (question.type === 'mcq') {
+      const index = Number(question.answer);
+      const option = question.options?.[index] ?? '—';
+      return `${String.fromCharCode(65 + index)} · ${option}`;
+    }
+    if (question.type === 'truefalse') return question.answer ? 'Vrai' : 'Faux';
+    if (question.type === 'numeric') return `${question.answer}${question.unit ? ` ${question.unit}` : ''}`;
+    if (question.type === 'buzzer') return question.answerText || '—';
+    return String(question.answerText || question.answer || '—');
+  }
+
+  function submittedAnswerLabel(question, answer) {
+    if (!question || !answer) return '—';
+    if (question.type === 'mcq') {
+      const index = Number(answer.value);
+      const option = question.options?.[index];
+      return Number.isInteger(index) && option !== undefined
+        ? `${String.fromCharCode(65 + index)} · ${option}`
+        : String(answer.value ?? '—');
+    }
+    if (question.type === 'truefalse') return String(answer.value) === 'true' ? 'Vrai' : 'Faux';
+    if (question.type === 'numeric') {
+      const value = String(answer.value ?? '').replace('.', ',');
+      return `${value}${question.unit ? ` ${question.unit}` : ''}`;
+    }
+    return String(answer.value ?? '—');
+  }
+
+  function questionTypeLabel(type) {
+    return ({ mcq: 'QCM', truefalse: 'Vrai / Faux', numeric: 'Réponse chiffrée', buzzer: 'Buzzer / réponse orale' })[type] || type;
+  }
+
   function handleMessage(message) {
     const payload = message.payload || {};
     if (message.type === 'state_request') {
@@ -319,13 +354,11 @@
 
     try {
       if (source === 'ai') {
-        setGenerationStatus(`L’IA prépare ${count} questions ${difficulty === 'Mixte' ? 'de difficulté variée' : difficulty.toLowerCase()}…`);
+        setGenerationStatus(`Gemini prépare ${count} questions ${difficulty === 'Mixte' ? 'de difficulté variée' : difficulty.toLowerCase()}…`);
         try {
           questions = await generateQuestionsWithAI(categoriesWanted, difficulty, count);
           const missing = count - questions.length;
-          if (missing > 0) {
-            questions.push(...localQuestionPool(categoriesWanted, difficulty, missing, questions.map((q) => q.question)));
-          }
+          if (missing > 0) questions.push(...localQuestionPool(categoriesWanted, difficulty, missing, questions.map((question) => question.question)));
           setGenerationStatus(`${questions.length} nouvelles questions prêtes.`, 'ok');
         } catch (error) {
           console.error(error);
@@ -362,6 +395,9 @@
     state.buzzedPlayer = null;
     state.buzzedPlayerId = null;
     state.lastResults = {};
+    state.correctLabel = null;
+    state.correctIndex = null;
+    state.celebrate = false;
     state.questionIndex += 1;
     if (state.questionIndex >= selectedQuestions.length) {
       finishGame();
@@ -500,6 +536,18 @@
       : '<div class="muted">Aucun joueur pour le moment.</div>';
   }
 
+  function renderAnswerLog() {
+    if (!answers.size) return '<div class="muted">Aucune réponse reçue pour le moment.</div>';
+    return [...answers.entries()].map(([id, answer]) => {
+      const player = players.get(id);
+      const answerLabel = submittedAnswerLabel(currentQuestion, answer);
+      let status = '📝 Réponse reçue';
+      if (answer.correct === true) status = `✅ Bonne réponse · ${answer.points || 0} pts`;
+      if (answer.correct === false) status = '❌ Mauvaise réponse · 0 pt';
+      return `<div class="answer-log-row answer-log-detailed"><div class="answer-player"><strong>${G.escapeHtml(player?.name || 'Joueur')}</strong>${state.mode === 'teams' ? `<span>Équipe ${G.escapeHtml(player?.team || 'Orange')}</span>` : ''}</div><div class="answer-value"><strong>${G.escapeHtml(answerLabel)}</strong><span>${G.escapeHtml(status)}</span></div></div>`;
+    }).join('');
+  }
+
   function render() {
     renderMetrics();
     renderPlayers();
@@ -511,13 +559,18 @@
     }
 
     if (state.phase === 'question') {
+      const expected = expectedAnswerLabel(currentQuestion);
+      const answerKey = `<div class="host-answer-key"><span>🔐 Réponse attendue — visible uniquement sur la console</span><strong>${G.escapeHtml(expected)}</strong></div>`;
       let special = '';
       if (currentQuestion.type === 'buzzer') {
         special = state.buzzedPlayer
-          ? `<div class="feedback"><strong>🚨 ${G.escapeHtml(state.buzzedPlayer)} a buzzé</strong><div class="actions" style="justify-content:center;margin-top:12px"><button id="buzzGood" class="btn green">✅ Bonne réponse</button><button id="buzzBad" class="btn danger">❌ Mauvaise réponse · Rouvrir</button></div></div>`
-          : '<div class="muted">En attente du premier buzz…</div>';
+          ? `<div class="feedback"><strong>🚨 ${G.escapeHtml(state.buzzedPlayer)} a buzzé</strong><div class="muted" style="margin-top:7px">Écoute sa réponse orale, puis valide-la ci-dessous.</div><div class="actions" style="justify-content:center;margin-top:12px"><button id="buzzGood" class="btn green">✅ Bonne réponse</button><button id="buzzBad" class="btn danger">❌ Mauvaise réponse · Rouvrir</button></div></div>`
+          : '<div class="muted" style="margin-top:12px">En attente du premier buzz…</div>';
       }
-      hostStage.innerHTML = `<span class="badge">Question ${state.questionNumber}/${state.totalQuestions}</span><span class="badge">${G.escapeHtml(currentQuestion.difficulty)}</span><div class="host-question">${G.escapeHtml(currentQuestion.question)}</div><div class="muted">${G.escapeHtml(currentQuestion.category)} · ${G.escapeHtml(currentQuestion.type)}</div>${special}<div class="answer-log" style="margin-top:14px">${[...answers.entries()].map(([id, answer]) => `<div class="answer-log-row"><span>${G.escapeHtml(players.get(id)?.name || 'Joueur')}</span><strong>Réponse reçue${answer.points !== undefined ? ` · ${answer.points} pts` : ''}</strong></div>`).join('')}</div><div class="actions" style="margin-top:16px">${currentQuestion.type !== 'buzzer' ? '<button id="revealBtn" class="btn primary">👁️ Afficher la réponse</button>' : ''}<button id="rankBtn" class="btn">🏆 Classement</button></div>`;
+      const answerLog = currentQuestion.type === 'buzzer'
+        ? ''
+        : `<div class="answer-log-title">Réponses des participants</div><div class="answer-log">${renderAnswerLog()}</div>`;
+      hostStage.innerHTML = `<div class="question-meta-host"><span class="badge">Question ${state.questionNumber}/${state.totalQuestions}</span><span class="badge">${G.escapeHtml(currentQuestion.difficulty)}</span></div><div class="host-question">${G.escapeHtml(currentQuestion.question)}</div><div class="muted">${G.escapeHtml(currentQuestion.category)} · ${G.escapeHtml(questionTypeLabel(currentQuestion.type))}</div>${answerKey}${special}${answerLog}<div class="actions" style="margin-top:16px">${currentQuestion.type !== 'buzzer' ? '<button id="revealBtn" class="btn primary">👁️ Afficher la réponse</button>' : ''}<button id="rankBtn" class="btn">🏆 Classement</button></div>`;
       document.getElementById('revealBtn')?.addEventListener('click', revealCurrent);
       document.getElementById('rankBtn')?.addEventListener('click', showLeaderboard);
       document.getElementById('buzzGood')?.addEventListener('click', () => resolveBuzz(true));
@@ -545,8 +598,8 @@
   });
   questionSourceSelect.addEventListener('change', () => {
     setGenerationStatus(questionSourceSelect.value === 'ai'
-      ? 'L’IA créera une nouvelle série selon tes réglages.'
-      : 'La petite banque locale sera utilisée sans génération IA.');
+      ? 'Gemini créera une nouvelle série selon tes réglages.'
+      : 'La banque locale sera utilisée sans génération IA.');
   });
   startBtn.addEventListener('click', startGame);
   document.getElementById('resetBtn').addEventListener('click', resetGame);
