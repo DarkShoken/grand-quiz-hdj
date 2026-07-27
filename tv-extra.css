@@ -32,7 +32,7 @@ body{min-height:100dvh}
 .answer-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(8px,1.2vh,11px);min-height:0;height:clamp(300px,46vh,470px);max-height:none}
 .answer-grid:has(.answer-tile:nth-child(3)){grid-template-rows:repeat(2,minmax(0,1fr))}
 .answer-grid:not(:has(.answer-tile:nth-child(3))){height:clamp(155px,23vh,235px);grid-template-rows:minmax(0,1fr)}
-.answer-tile{min-height:0;height:100%;padding:clamp(8px,1.2vh,13px);font-size:clamp(2rem,5vh,5rem);font-weight:950;line-height:1.02;text-align:center;display:grid;place-items:center;overflow-wrap:anywhere;overflow:hidden;color:#fff!important;text-shadow:-1px -1px 0 #111,1px -1px 0 #111,-1px 1px 0 #111,1px 1px 0 #111,0 2px 3px rgba(0,0,0,.8)}
+.answer-tile{min-height:0;height:100%;padding:clamp(8px,1.2vh,13px);font-size:clamp(2rem,5vh,5rem);font-weight:950;line-height:1.02;text-align:center;display:grid;place-items:center;word-break:normal;overflow-wrap:normal;hyphens:none;text-wrap:balance;overflow:hidden;color:#fff!important;text-shadow:-1px -1px 0 #111,1px -1px 0 #111,-1px 1px 0 #111,1px 1px 0 #111,0 2px 3px rgba(0,0,0,.8)}
 .answer-tile.a{background:#00a1f1!important}
 .answer-tile.b{background:#7cbb00!important}
 .answer-tile.c{background:#ffbb00!important}
