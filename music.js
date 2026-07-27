@@ -1,216 +1,283 @@
 (() => {
   let ctx = null;
   let master = null;
+  let compressor = null;
   let timer = null;
   let enabled = false;
-  let volume = 0.065;
+  let volume = 0.16;
   let step = 0;
-  let musicState = { phase:'lobby', durationMs:20000, deadline:null, questionId:null };
-  let lastPhase = 'lobby';
   let lastQuestionId = null;
+  let lastPhase = 'lobby';
   let timeUpPlayedFor = null;
+  let state = { phase: 'lobby', durationMs: 20000, deadline: null, questionId: null };
 
-  const progression = [60, 65, 67, 60]; // C - F - G - C
-  const melody = [7,null,9,7,12,null,9,7,4,null,7,4,9,null,7,null];
-  const finalMelody = [12,9,7,9,12,14,16,14,12,9,7,9,12,14,16,19];
+  const chordRoots = [60, 65, 67, 60];
+  const calmMelody = [7, 9, 12, 9, 7, 4, 7, 9, 12, 14, 12, 9, 7, 4, 2, 4];
+  const activeMelody = [7, 9, 12, 14, 12, 9, 7, 9, 12, 14, 16, 14, 12, 9, 7, 4];
+  const urgentMelody = [12, 14, 16, 19, 16, 14, 12, 14, 16, 19, 21, 19, 16, 14, 12, 9];
 
-  function midiToHz(note){ return 440 * Math.pow(2, (note - 69) / 12); }
-
-  function ensureAudio(){
-    if(ctx) return;
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if(!AudioContextClass) return;
-    ctx = new AudioContextClass();
-    master = ctx.createGain();
-    master.gain.value = volume;
-    master.connect(ctx.destination);
+  function midiToHz(note) {
+    return 440 * Math.pow(2, (note - 69) / 12);
   }
 
-  function playTone(note, duration=.16, type='triangle', gainValue=.08, delay=0, cutoff=2400){
-    if(!ctx || !master || note == null) return;
-    const now = ctx.currentTime + delay;
+  function ensureAudio() {
+    if (ctx && ctx.state !== 'closed') return true;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return false;
+
+    ctx = new AudioContextClass();
+    master = ctx.createGain();
+    compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -22;
+    compressor.knee.value = 20;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.01;
+    compressor.release.value = 0.18;
+    master.gain.value = volume;
+    master.connect(compressor);
+    compressor.connect(ctx.destination);
+    return true;
+  }
+
+  function playTone(note, duration = 0.14, type = 'triangle', gainValue = 0.08, delay = 0, cutoff = 2800) {
+    if (!ctx || !master || note == null || ctx.state === 'closed') return;
+    const when = ctx.currentTime + Math.max(0, delay);
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     const filter = ctx.createBiquadFilter();
+
     osc.type = type;
-    osc.frequency.value = midiToHz(note);
+    osc.frequency.setValueAtTime(midiToHz(note), when);
     filter.type = 'lowpass';
-    filter.frequency.value = cutoff;
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.max(.0002, gainValue), now + .012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    osc.connect(filter); filter.connect(gain); gain.connect(master);
-    osc.start(now); osc.stop(now + duration + .04);
+    filter.frequency.setValueAtTime(cutoff, when);
+    filter.Q.value = 0.7;
+
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, gainValue), when + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.04, duration));
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(master);
+    osc.start(when);
+    osc.stop(when + duration + 0.05);
   }
 
-  function playChord(root, gain=.025, duration=.32, delay=0){
-    [0,4,7].forEach((interval,i)=>playTone(root+interval, duration, 'sine', gain, delay + i*.012, 2100));
+  function playChord(root, duration = 0.32, gainValue = 0.032, delay = 0) {
+    [0, 4, 7].forEach((interval, index) => {
+      playTone(root + interval, duration, 'sine', gainValue, delay + index * 0.012, 2300);
+    });
   }
 
-  function playClick(strong=false){
-    const note = strong ? 91 : 86;
-    playTone(note, .045, 'square', strong ? .028 : .018, 0, 5200);
+  function playPercussion(accent = false) {
+    playTone(accent ? 91 : 87, accent ? 0.05 : 0.035, 'square', accent ? 0.045 : 0.025, 0, 6500);
   }
 
-  function playQuestionStart(){
-    if(!enabled || !ctx) return;
-    playTone(72,.12,'triangle',.055,0);
-    playTone(76,.12,'triangle',.05,.08);
-    playTone(79,.18,'triangle',.055,.16);
-  }
-
-  function playReveal(){
-    if(!enabled || !ctx) return;
-    playTone(72,.14,'triangle',.045,0);
-    playTone(76,.14,'triangle',.045,.07);
-    playTone(79,.24,'triangle',.055,.14);
-  }
-
-  function playTimeUp(){
-    if(!enabled || !ctx) return;
-    playTone(79,.10,'square',.04,0);
-    playTone(76,.10,'square',.04,.10);
-    playTone(72,.22,'triangle',.055,.20);
-  }
-
-  function countdownInfo(){
-    if(musicState.phase !== 'question' || !musicState.deadline) return null;
-    const duration = Math.max(1000, Number(musicState.durationMs) || 20000);
-    const remaining = Math.max(0, musicState.deadline - Date.now());
+  function countdownInfo() {
+    if (state.phase !== 'question' || !state.deadline) return null;
+    const duration = Math.max(1000, Number(state.durationMs) || 20000);
+    const remaining = Math.max(0, Number(state.deadline) - Date.now());
     const progress = Math.max(0, Math.min(1, 1 - remaining / duration));
     return { duration, remaining, progress };
   }
 
-  function getTempo(){
+  function tempoForState() {
     const info = countdownInfo();
-    if(!info) return musicState.phase === 'lobby' ? 94 : 102;
-    if(info.remaining <= 3000) return 178;
-    if(info.remaining <= 6000) return 154;
-    if(info.progress >= .68) return 138;
-    if(info.progress >= .38) return 124;
-    return 110;
+    if (!info) return state.phase === 'lobby' ? 92 : 84;
+
+    if (info.remaining <= 2000 || info.progress >= 0.93) return 184;
+    if (info.remaining <= 4000 || info.progress >= 0.82) return 158;
+    if (info.progress >= 0.68) return 138;
+    if (info.progress >= 0.48) return 122;
+    if (info.progress >= 0.25) return 110;
+    return 98;
   }
 
-  function getStepMs(){ return (60_000 / getTempo()) / 2; }
+  function stepDelayMs() {
+    return (60000 / tempoForState()) / 2;
+  }
 
-  function tickLobby(){
+  function playLobbyStep() {
     const i = step % 16;
-    const root = progression[Math.floor(step / 8) % progression.length];
-    if(i % 4 === 0) playTone(root - 12, .22, 'triangle', .045);
-    if(i % 8 === 0) playChord(root, .016, .38, .02);
-    if(i === 2 || i === 10) playTone(root + 7, .12, 'sine', .025, .02);
+    const root = chordRoots[Math.floor(step / 8) % chordRoots.length];
+    if (i % 4 === 0) playTone(root - 12, 0.2, 'triangle', 0.065, 0, 1700);
+    if (i % 8 === 0) playChord(root, 0.42, 0.024, 0.015);
+    if (i === 2 || i === 6 || i === 10 || i === 14) {
+      playTone(root + calmMelody[i], 0.16, 'triangle', 0.038, 0.02, 2500);
+    }
   }
 
-  function tickQuestion(){
+  function playQuestionStep() {
     const info = countdownInfo();
-    if(!info) return;
-    if(info.remaining <= 0){
-      if(timeUpPlayedFor !== musicState.deadline){
-        timeUpPlayedFor = musicState.deadline;
+    if (!info) return;
+
+    if (info.remaining <= 0) {
+      if (timeUpPlayedFor !== state.deadline) {
+        timeUpPlayedFor = state.deadline;
         playTimeUp();
       }
       return;
     }
 
     const i = step % 16;
-    const root = progression[Math.floor(step / 8) % progression.length];
-    const finalFive = info.remaining <= 5000;
-    const finalThree = info.remaining <= 3000;
+    const root = chordRoots[Math.floor(step / 8) % chordRoots.length];
+    const level = info.progress >= 0.82 || info.remaining <= 4000
+      ? 3
+      : info.progress >= 0.68
+        ? 2
+        : info.progress >= 0.35
+          ? 1
+          : 0;
 
-    if(i % 2 === 0) playTone(root - 12, finalFive ? .11 : .17, 'triangle', finalFive ? .07 : .052, 0, 1800);
-    if(i % 4 === 0) playChord(root, finalFive ? .024 : .018, finalFive ? .22 : .32, .01);
+    const melody = level >= 3 ? urgentMelody : level >= 1 ? activeMelody : calmMelody;
 
-    const pattern = finalFive ? finalMelody : melody;
-    const offset = pattern[i];
-    const playMelody = finalFive || i % 2 === 0;
-    if(playMelody && offset != null){
-      playTone(root + offset, finalThree ? .075 : .12, finalFive ? 'square' : 'triangle', finalFive ? .032 : .026, .018, finalFive ? 3600 : 2600);
+    if (i % 2 === 0) {
+      playTone(root - 12, level >= 2 ? 0.1 : 0.17, 'triangle', level >= 2 ? 0.09 : 0.072, 0, 1800);
+    }
+    if (i % 4 === 0) {
+      playChord(root, level >= 2 ? 0.2 : 0.34, level >= 2 ? 0.04 : 0.03, 0.01);
     }
 
-    if(finalFive){
-      playClick(i % 2 === 0);
-      if(finalThree && i % 2 === 1) playTone(84 + (i % 4), .055, 'sine', .02, .03, 5000);
-    } else if(info.progress >= .68 && i % 4 === 2){
-      playClick(false);
+    const shouldPlayMelody = level >= 2 || i % 2 === 0;
+    if (shouldPlayMelody) {
+      playTone(
+        root + melody[i],
+        level >= 3 ? 0.07 : level >= 2 ? 0.1 : 0.14,
+        level >= 3 ? 'square' : 'triangle',
+        level >= 3 ? 0.052 : level >= 2 ? 0.045 : 0.038,
+        0.018,
+        level >= 3 ? 4300 : 3000,
+      );
+    }
+
+    if (level >= 3) {
+      playPercussion(i % 2 === 0);
+    } else if (level === 2 && i % 2 === 0) {
+      playPercussion(i % 4 === 0);
+    } else if (level === 1 && i % 4 === 2) {
+      playPercussion(false);
     }
   }
 
-  function tickNeutral(){
+  function playNeutralStep() {
     const i = step % 16;
-    const root = progression[Math.floor(step / 8) % progression.length];
-    if(i % 4 === 0) playTone(root - 12, .18, 'triangle', .04);
-    if(i % 8 === 0) playChord(root, .014, .34, .015);
+    const root = chordRoots[Math.floor(step / 8) % chordRoots.length];
+    if (i % 8 === 0) playChord(root, 0.38, 0.02, 0.01);
+    if (i % 4 === 0) playTone(root - 12, 0.19, 'triangle', 0.052, 0, 1600);
   }
 
-  function schedule(){
-    if(!enabled) return;
-    if(musicState.phase === 'question') tickQuestion();
-    else if(musicState.phase === 'lobby') tickLobby();
-    else tickNeutral();
+  function playQuestionStart() {
+    if (!enabled || !ctx) return;
+    playTone(72, 0.11, 'triangle', 0.07, 0);
+    playTone(76, 0.11, 'triangle', 0.07, 0.08);
+    playTone(79, 0.2, 'triangle', 0.08, 0.16);
+  }
+
+  function playReveal() {
+    if (!enabled || !ctx) return;
+    playTone(67, 0.12, 'triangle', 0.055, 0);
+    playTone(72, 0.12, 'triangle', 0.06, 0.08);
+    playTone(76, 0.22, 'triangle', 0.07, 0.16);
+  }
+
+  function playTimeUp() {
+    if (!enabled || !ctx) return;
+    playTone(79, 0.09, 'square', 0.06, 0);
+    playTone(76, 0.09, 'square', 0.06, 0.09);
+    playTone(72, 0.24, 'triangle', 0.08, 0.18);
+  }
+
+  function schedule() {
+    if (!enabled) return;
+    if (state.phase === 'question') playQuestionStep();
+    else if (state.phase === 'lobby') playLobbyStep();
+    else playNeutralStep();
     step += 1;
-    timer = window.setTimeout(schedule, getStepMs());
+    timer = window.setTimeout(schedule, stepDelayMs());
   }
 
-  function restartScheduler(){
-    if(timer){ clearTimeout(timer); timer = null; }
-    if(!enabled) return;
-    schedule();
+  function restartScheduler() {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (enabled) schedule();
   }
 
-  function sync(nextState={}){
+  function sync(nextState = {}) {
     const nextPhase = nextState.phase || 'lobby';
     const nextQuestionId = nextState.question?.id || nextState.questionId || null;
     const phaseChanged = nextPhase !== lastPhase;
-    const questionChanged = nextQuestionId && nextQuestionId !== lastQuestionId;
+    const questionChanged = Boolean(nextQuestionId && nextQuestionId !== lastQuestionId);
 
-    musicState = {
+    state = {
       phase: nextPhase,
       durationMs: Number(nextState.durationMs) || 20000,
-      deadline: nextState.deadline || null,
-      questionId: nextQuestionId
+      deadline: nextState.deadline ? Number(nextState.deadline) : null,
+      questionId: nextQuestionId,
     };
 
-    if(questionChanged){
+    if (questionChanged) {
       step = 0;
       timeUpPlayedFor = null;
       playQuestionStart();
-    } else if(phaseChanged && nextPhase === 'reveal'){
+      restartScheduler();
+    } else if (phaseChanged && nextPhase === 'reveal') {
       playReveal();
+      restartScheduler();
     }
 
     lastPhase = nextPhase;
-    lastQuestionId = nextQuestionId || lastQuestionId;
-    if(enabled && !timer) restartScheduler();
+    if (nextQuestionId) lastQuestionId = nextQuestionId;
   }
 
-  async function start(){
-    ensureAudio();
-    if(!ctx) return false;
-    if(ctx.state === 'suspended') await ctx.resume();
-    if(enabled) return true;
+  async function start() {
+    if (!ensureAudio()) return false;
+    try {
+      if (ctx.state !== 'running') await ctx.resume();
+    } catch (error) {
+      console.error('Impossible d’activer le son', error);
+      return false;
+    }
+
     enabled = true;
     step = 0;
+    playTone(72, 0.08, 'triangle', 0.055, 0);
+    playTone(79, 0.14, 'triangle', 0.065, 0.08);
     restartScheduler();
     return true;
   }
 
-  function stop(){
+  function stop() {
     enabled = false;
-    if(timer){ clearTimeout(timer); timer = null; }
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
   }
 
-  async function toggle(){
-    if(enabled){ stop(); return false; }
-    await start(); return enabled;
+  async function toggle() {
+    if (enabled) {
+      stop();
+      return false;
+    }
+    return start();
   }
 
-  function setVolume(value){
-    volume = Math.max(0, Math.min(.22, Number(value) || 0));
-    if(master && ctx) master.gain.setTargetAtTime(volume, ctx.currentTime, .05);
+  function setVolume(value) {
+    volume = Math.max(0, Math.min(0.3, Number(value) || 0));
+    if (master && ctx && ctx.state !== 'closed') {
+      master.gain.setTargetAtTime(volume, ctx.currentTime, 0.04);
+    }
   }
 
   window.GrandQuizMusic = {
-    start, stop, toggle, setVolume, sync,
-    get enabled(){ return enabled; }
+    start,
+    stop,
+    toggle,
+    setVolume,
+    sync,
+    get enabled() { return enabled; },
+    get available() { return Boolean(window.AudioContext || window.webkitAudioContext); },
   };
 })();
