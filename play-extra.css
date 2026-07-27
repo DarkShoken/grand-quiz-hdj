@@ -1,0 +1,6 @@
+.mobile-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.mobile-question{font-size:clamp(1.35rem,5.8vw,1.8rem);line-height:1.14;margin:12px 0 18px}
+.mobile-options{display:grid;gap:11px}
+.mobile-option{text-align:center;display:grid;place-items:center;min-height:72px;line-height:1.15;padding:13px 16px;overflow-wrap:anywhere}
+.reveal-explanation{line-height:1.35}
+@media(max-width:420px){.mobile-option{min-height:66px;font-size:1rem}.mobile-question{font-size:1.35rem}}
