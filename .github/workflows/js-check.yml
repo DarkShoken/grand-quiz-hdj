@@ -1,0 +1,26 @@
+name: Vérification JavaScript
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  syntaxe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le projet
+        uses: actions/checkout@v4
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Vérifier les fichiers JavaScript
+        run: |
+          node --check shared.js
+          node --check music-v7.js
+          node --check tv-v7.js
+          node --check player-v4.js
+          node --check host-v2.js
+          node --check api/generate-questions.js
+          node --check api/verify-host-pin.js
