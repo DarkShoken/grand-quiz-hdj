@@ -97,25 +97,22 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  // Schéma volontairement limité au sous-ensemble accepté par generateContent.
   const schema = {
     type: "object",
-    additionalProperties: false,
     required: ["questions"],
     properties: {
       questions: {
         type: "array",
-        minItems: Math.min(5, count),
-        maxItems: count,
         items: {
           type: "object",
-          additionalProperties: false,
           required: ["category", "difficulty", "type", "question", "options", "answer", "unit", "explanation"],
           properties: {
             category: { type: "string" },
             difficulty: { type: "string", enum: ["Facile", "Moyen", "Difficile"] },
             type: { type: "string", enum: ["mcq", "truefalse", "numeric", "buzzer"] },
             question: { type: "string" },
-            options: { type: "array", items: { type: "string" }, maxItems: 4 },
+            options: { type: "array", items: { type: "string" } },
             answer: { type: "string" },
             unit: { type: "string" },
             explanation: { type: "string" },
@@ -154,12 +151,8 @@ module.exports = async function handler(req, res) {
         generationConfig: {
           temperature: 0.85,
           maxOutputTokens: 12000,
-          responseFormat: {
-            text: {
-              mimeType: "application/json",
-              schema,
-            },
-          },
+          responseMimeType: "application/json",
+          responseSchema: schema,
         },
       }),
     });
