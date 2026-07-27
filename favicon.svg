@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Le Grand Quiz">
+  <rect width="64" height="64" rx="15" fill="#070817"/>
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="none" stroke="#ffffff" stroke-opacity=".16" stroke-width="2"/>
+  <rect x="7" y="7" width="10" height="10" rx="3" fill="#00a1f1"/>
+  <rect x="47" y="7" width="10" height="10" rx="3" fill="#7cbb00"/>
+  <rect x="7" y="47" width="10" height="10" rx="3" fill="#ffbb00"/>
+  <rect x="47" y="47" width="10" height="10" rx="3" fill="#f65314"/>
+  <path fill="#ffffff" d="M20.5 25.1C20.5 16.4 26.3 11 35.3 11c8.3 0 14.2 4.9 14.2 12.2 0 5.6-3 9-7.7 12-3.9 2.5-5 4.2-5 7.4v1.1h-9.4v-1.6c0-6.4 2.9-9.8 7.4-12.7 3.3-2.1 4.8-3.7 4.8-6.1 0-2.8-2-4.7-5-4.7-3.4 0-5.6 2.3-5.9 6.5z"/>
+  <circle cx="32.2" cy="51" r="4.5" fill="#ffffff"/>
+</svg>
