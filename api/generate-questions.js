@@ -82,7 +82,7 @@ module.exports = async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const count = clamp(body.count, 5, 25);
+  const count = clamp(body.count, 5, 30);
   const allowedDifficulties = ["Facile", "Moyen", "Difficile", "Mixte"];
   const difficulty = allowedDifficulties.includes(body.difficulty) ? body.difficulty : "Mixte";
   const categories = Array.isArray(body.categories)
@@ -97,7 +97,6 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  // Schéma volontairement limité au sous-ensemble accepté par generateContent.
   const schema = {
     type: "object",
     required: ["questions"],
@@ -150,7 +149,7 @@ module.exports = async function handler(req, res) {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.85,
-          maxOutputTokens: 12000,
+          maxOutputTokens: 15000,
           responseMimeType: "application/json",
           responseSchema: schema,
         },
