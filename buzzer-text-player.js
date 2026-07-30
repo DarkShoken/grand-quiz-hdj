@@ -87,20 +87,17 @@
     const activePlayerId = latestState?.buzzedPlayerId || null;
     const isMine = Boolean(activePlayerId && identity?.playerId && activePlayerId === identity.playerId);
     const lockedByOther = Boolean(activePlayerId && !isMine);
+    const nextButtonText = isMine || stored ? 'Modifier ma réponse' : 'Envoyer ma réponse';
 
-    input.disabled = lockedByOther;
-    sendButton.disabled = lockedByOther;
-    sendButton.textContent = isMine || stored ? 'Modifier ma réponse' : 'Envoyer ma réponse';
+    if (input.disabled !== lockedByOther) input.disabled = lockedByOther;
+    if (sendButton.disabled !== lockedByOther) sendButton.disabled = lockedByOther;
+    if (sendButton.textContent !== nextButtonText) sendButton.textContent = nextButtonText;
 
-    if (localStatus) {
-      status.textContent = localStatus;
-    } else if (isMine) {
-      status.textContent = '✅ Ta réponse est transmise au soignant.';
-    } else if (lockedByOther) {
-      status.textContent = `⏳ ${latestState?.buzzedPlayer || 'Un participant'} a pris la main.`;
-    } else {
-      status.textContent = 'Le premier envoi prend la main.';
-    }
+    let nextStatus = 'Le premier envoi prend la main.';
+    if (localStatus) nextStatus = localStatus;
+    else if (isMine) nextStatus = '✅ Ta réponse est transmise au soignant.';
+    else if (lockedByOther) nextStatus = `⏳ ${latestState?.buzzedPlayer || 'Un participant'} a pris la main.`;
+    if (status.textContent !== nextStatus) status.textContent = nextStatus;
   }
 
   async function sendAnswer() {
