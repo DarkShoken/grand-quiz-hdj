@@ -9,7 +9,7 @@
 
   function isCosmeticMutation(record) {
     const element = mutationElement(record);
-    return Boolean(element?.closest('.answer-status, #numericBtn'));
+    return Boolean(element?.closest('.answer-status, #numericBtn, #freeBtn, #buzzBtn, .buzzer-status'));
   }
 
   window.MutationObserver = class FilteredMutationObserver extends NativeMutationObserver {
