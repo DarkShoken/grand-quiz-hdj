@@ -3,7 +3,7 @@
   if (!G || typeof G.createTransport !== 'function') return;
 
   const ParentMap = window.Map;
-  const NativeMap = globalThis.Map;
+  const NativeMap = Object.getPrototypeOf(ParentMap) || ParentMap;
   let capturedMaps = 0;
   let playersMap = null;
   let answersMap = null;
@@ -90,11 +90,6 @@
 
   function captureBaseline(payload) {
     if (!playersMap) return;
-    for (const [id, player] of playersMap.entries()) {
-      if (!scoreBaseline.has(id)) scoreBaseline.set(id, Number(player?.score) || 0);
-    }
-    const domExpected = document.querySelector('#hostStage .host-answer-key strong')?.textContent?.trim();
-    if (domExpected) correctedLabel = domExpected;
     if (payload.phase === 'question' && payload.question?.id !== activeQuestionId) {
       activeQuestionId = payload.question?.id || null;
       correctedQuestionId = null;
@@ -102,7 +97,13 @@
       correctedLabel = '';
       scoreBaseline.clear();
       for (const [id, player] of playersMap.entries()) scoreBaseline.set(id, Number(player?.score) || 0);
+    } else {
+      for (const [id, player] of playersMap.entries()) {
+        if (!scoreBaseline.has(id)) scoreBaseline.set(id, Number(player?.score) || 0);
+      }
     }
+    const domExpected = document.querySelector('#hostStage .host-answer-key strong')?.textContent?.trim();
+    if (domExpected) correctedLabel = domExpected;
   }
 
   function rankingFromPlayers(mode) {
