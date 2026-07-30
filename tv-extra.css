@@ -48,11 +48,11 @@ body{min-height:100dvh}
 .numeric-instruction,.buzzer-instruction{font-size:clamp(1.5rem,4vh,3.3rem);font-weight:1000;text-align:center;color:var(--cyan);margin:10px 0}
 .buzzer-instruction{color:var(--red)}
 .reveal-card .question-text{font-size:clamp(1.15rem,2.55vh,2.2rem);margin-bottom:4px}
-.reveal-card .answer-grid{height:clamp(205px,29vh,310px);max-height:none}
-.reveal-card .answer-grid:not(:has(.answer-tile:nth-child(3))){height:clamp(105px,15vh,160px)}
+.reveal-card .answer-grid{height:clamp(180px,25vh,275px);max-height:none}
+.reveal-card .answer-grid:not(:has(.answer-tile:nth-child(3))){height:clamp(95px,13vh,145px)}
 .reveal-card .answer-tile{min-height:0;height:100%;padding:5px 8px}
-.reveal-answer{font-size:clamp(1.3rem,3vh,2.45rem);margin:clamp(4px,.8vh,8px) 0}
-.reveal-explanation{font-size:clamp(.88rem,1.55vh,1.12rem);line-height:1.1;max-width:980px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.reveal-answer{font-size:clamp(1.4rem,3.2vh,2.6rem);margin:clamp(4px,.8vh,8px) 0}
+.reveal-explanation{font-size:clamp(1.2rem,2.35vh,1.85rem);line-height:1.22;max-width:1080px;font-weight:700;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .reveal-auto-countdown{display:flex;justify-content:center;align-items:center;gap:12px;margin-top:clamp(5px,.9vh,9px)}
 .reveal-timer{width:clamp(52px,6.2vh,64px);height:clamp(52px,6.2vh,64px);font-size:clamp(1.15rem,2.3vh,1.55rem)}
 .reveal-auto-label{font-size:clamp(1rem,2vh,1.25rem);font-weight:900;color:var(--cyan)}
