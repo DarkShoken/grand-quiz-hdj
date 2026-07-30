@@ -34,6 +34,6 @@ body{min-height:0}
 .buzzer-mobile-panel .big-buzzer{width:100%;height:100%;min-height:120px;aspect-ratio:auto}
 .buzzer-mobile-panel .feedback{margin:0;padding:10px 12px;min-height:44px;display:grid;place-items:center}
 .big-buzzer:disabled{opacity:.72;cursor:default}
-.reveal-explanation{line-height:1.35}
+.reveal-explanation{font-size:clamp(1.1rem,4.8vw,1.45rem);line-height:1.35;font-weight:700}
 @media(max-width:360px){.player-shell-game .player-card:has(.mobile-options){grid-template-rows:auto minmax(0,44fr) minmax(0,56fr)}.player-shell-game .player-card:has(.direct-answer-panel),.player-shell-game .player-card:has(.buzzer-mobile-panel){grid-template-rows:auto minmax(0,48fr) minmax(0,52fr)}.mobile-options{gap:6px}.mobile-option{padding:6px 7px}.mobile-meta .answer-status{min-width:98px}.direct-answer-panel{padding:12px;gap:8px}}
 @media(max-height:620px){.player-shell-game .player-card{padding:6px 8px}.player-shell-game .player-card:has(.mobile-options){grid-template-rows:auto minmax(0,38fr) minmax(0,62fr);gap:5px}.player-shell-game .player-card:has(.direct-answer-panel),.player-shell-game .player-card:has(.buzzer-mobile-panel){grid-template-rows:auto minmax(0,45fr) minmax(0,55fr);gap:5px}.mobile-meta .badge{padding:4px 7px;font-size:.7rem}.mobile-options{gap:6px}.direct-answer-panel{padding:10px;gap:7px}.direct-answer-panel>input,.direct-answer-panel .numeric-row input{padding:11px}.direct-answer-panel>.btn{min-height:44px}.buzzer-mobile-panel .big-buzzer{min-height:96px}}
