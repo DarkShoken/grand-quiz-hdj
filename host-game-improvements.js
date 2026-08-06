@@ -18,6 +18,7 @@
   let room = G.cleanRoom(G.qs('room', 'QUIZ'));
   let teamNames = loadNames();
   let previousPhase = null;
+  let previousTotalQuestions = 0;
   let activeQuestionId = null;
   let revealQuestionId = null;
   let revealAt = 0;
@@ -163,8 +164,12 @@
         latestPhase = payload.phase || null;
         latestMode = payload.mode || 'individual';
         const questionId = payload.question?.id || null;
+        const totalQuestions = Number(payload.totalQuestions) || 0;
+        const preparedSeries = payload.phase === 'lobby' && totalQuestions > 0 && Number(payload.questionIndex) === -1;
 
-        if (payload.phase === 'preview' && previousPhase !== 'preview') generateNames();
+        if ((payload.phase === 'preview' && previousPhase !== 'preview') || (preparedSeries && previousTotalQuestions === 0)) {
+          generateNames();
+        }
         if (payload.mode === 'teams' && !teamNames) generateNames();
         if (teamNames) payload.teamNames = { ...teamNames };
 
@@ -182,6 +187,7 @@
         }
 
         previousPhase = payload.phase || null;
+        previousTotalQuestions = totalQuestions;
         schedulePatch();
       }
       return originalSend(type, payload);
