@@ -67,6 +67,37 @@
     revealQuestionId = null;
   }
 
+  function remainingSeconds() {
+    return Math.max(0, Math.ceil((revealAt - Date.now()) / 1000));
+  }
+
+  function ensureStableRevealTimer() {
+    const stage = document.getElementById('hostStage');
+    if (!stage || latestPhase !== 'reveal') return null;
+
+    const nativeTimer = stage.querySelector('#hostRevealTimer');
+    if (nativeTimer) {
+      nativeTimer.id = 'hostRevealTimerNative';
+      nativeTimer.setAttribute('aria-hidden', 'true');
+      nativeTimer.style.display = 'none';
+    }
+
+    let stableTimer = stage.querySelector('#hostRevealTimerStable');
+    if (!stableTimer) {
+      const autoNext = stage.querySelector('.host-auto-next');
+      const hiddenTimer = stage.querySelector('#hostRevealTimerNative');
+      if (!autoNext || !hiddenTimer) return null;
+      stableTimer = document.createElement('div');
+      stableTimer.id = 'hostRevealTimerStable';
+      stableTimer.className = `${hiddenTimer.className} host-reveal-timer-stable`;
+      hiddenTimer.insertAdjacentElement('afterend', stableTimer);
+    }
+
+    const text = String(remainingSeconds());
+    if (stableTimer.textContent !== text) stableTimer.textContent = text;
+    return stableTimer;
+  }
+
   function clickNextWhenReady(attempt = 0) {
     if (latestPhase !== 'reveal') return;
     const button = document.getElementById('nextBtn');
@@ -88,13 +119,8 @@
         clearRevealTimers();
         return;
       }
-      const node = document.getElementById('hostRevealTimer');
-      if (node) {
-        const seconds = Math.max(0, Math.ceil((revealAt - Date.now()) / 1000));
-        const text = String(seconds);
-        if (node.textContent !== text) node.textContent = text;
-      }
-    }, 60);
+      ensureStableRevealTimer();
+    }, 100);
   }
 
   function schedulePatch() {
@@ -117,6 +143,7 @@
     }
 
     if (latestPhase === 'reveal') {
+      ensureStableRevealTimer();
       const label = stage.querySelector('.host-auto-next span');
       if (label && label.textContent !== '10 secondes pour commenter la réponse.') {
         label.textContent = '10 secondes pour commenter la réponse.';
@@ -145,6 +172,8 @@
 
   const style = document.createElement('style');
   style.textContent = `
+    #hostRevealTimer{visibility:hidden!important}
+    .host-reveal-timer-stable{visibility:visible!important}
     .generated-team-names{margin:0 0 12px;padding:10px 13px;border-radius:14px;background:rgba(155,93,229,.12);border:1px solid rgba(155,93,229,.28);font-weight:900;text-align:center}
     .preserved-answer-block{margin:16px 0;padding:12px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08)}
     .preserved-answer-block .answer-log-title{margin-top:0}
@@ -197,7 +226,7 @@
   };
 
   const observer = new MutationObserver(schedulePatch);
-  const start = () => observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  const start = () => observer.observe(document.body, { childList: true, subtree: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
   window.addEventListener('pagehide', clearRevealTimers);
