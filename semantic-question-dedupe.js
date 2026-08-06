@@ -1,6 +1,6 @@
 (() => {
-  const HISTORY_KEY = 'grand-quiz-semantic-history-v1';
-  const LEGACY_USED_KEY = 'grand-quiz-used-questions-v2';
+  const HISTORY_KEY = 'grand-quiz-semantic-history-v2';
+  const LEGACY_HISTORY_KEYS = ['grand-quiz-semantic-history-v1', 'grand-quiz-used-questions-v2'];
   const SESSION_PREFIX = 'grand-quiz-session-v2:';
   const MAX_HISTORY = 500;
   const nativeFetch = window.fetch.bind(window);
@@ -8,7 +8,7 @@
 
   const STOP_WORDS = new Set([
     'a','ai','au','aux','avec','ce','ces','cet','cette','comme','comment','dans','de','des','du','elle','en','est','et','etre','fait','font','il','ils','la','le','les','leur','leurs','lui','mais','ne','nom','nous','ou','par','parmi','pas','plus','pour','qu','que','quel','quelle','quelles','quels','qui','quoi','sa','se','ses','son','sont','sur','un','une','vers','vous','y',
-    'appelle','appellent','correspond','donne','indique','trouve','trouvent','possede','possèdent','suivant','suivante','suivants','suivantes','reponse','question'
+    'appelle','appellent','correspond','donne','indique','trouve','trouvent','possede','possedent','suivant','suivante','suivants','suivantes','reponse','question'
   ]);
 
   function normalize(value) {
@@ -23,10 +23,10 @@
   }
 
   function stem(token) {
-    if (token.length > 6 && token.endsWith('ements')) return token.slice(0, -6);
+    if (token.length > 7 && token.endsWith('ements')) return token.slice(0, -6);
     if (token.length > 6 && token.endsWith('ement')) return token.slice(0, -5);
+    if (token.length > 6 && token.endsWith('ations')) return token.slice(0, -5);
     if (token.length > 5 && token.endsWith('iques')) return token.slice(0, -2);
-    if (token.length > 5 && token.endsWith('ique')) return token;
     if (token.length > 5 && token.endsWith('es')) return token.slice(0, -2);
     if (token.length > 4 && (token.endsWith('s') || token.endsWith('x'))) return token.slice(0, -1);
     return token;
@@ -50,7 +50,7 @@
 
   function toEntry(value) {
     if (typeof value === 'string') {
-      return { question: value, category: '', type: '', answer: '', options: [] };
+      return { question: value, category: '', type: '', answer: '', options: [], topicKey: '' };
     }
     const question = value && typeof value === 'object' ? value : {};
     return {
@@ -59,19 +59,18 @@
       type: String(question.type || '').toLowerCase(),
       answer: String(expectedAnswer(question) || '').trim(),
       options: Array.isArray(question.options) ? question.options.map((option) => String(option || '').trim()).filter(Boolean) : [],
+      topicKey: String(question.topicKey || '').trim(),
     };
   }
 
-  function stats(left, right) {
-    const a = left instanceof Set ? left : new Set(left);
-    const b = right instanceof Set ? right : new Set(right);
+  function overlapStats(left, right) {
     let shared = 0;
-    for (const item of a) if (b.has(item)) shared += 1;
-    const union = a.size + b.size - shared;
+    for (const item of left) if (right.has(item)) shared += 1;
+    const union = left.size + right.size - shared;
     return {
       shared,
       jaccard: union ? shared / union : 0,
-      containment: Math.min(a.size, b.size) ? shared / Math.min(a.size, b.size) : 0,
+      containment: Math.min(left.size, right.size) ? shared / Math.min(left.size, right.size) : 0,
     };
   }
 
@@ -92,19 +91,23 @@
     if (!leftQuestion || !rightQuestion) return false;
     if (leftQuestion === rightQuestion) return true;
 
+    const leftTopic = normalize(left.topicKey);
+    const rightTopic = normalize(right.topicKey);
+    if (leftTopic && rightTopic && leftTopic === rightTopic) return true;
+
     const leftTokens = tokens(left.question);
     const rightTokens = tokens(right.question);
-    const overlap = stats(leftTokens, rightTokens);
+    const overlap = overlapStats(leftTokens, rightTokens);
     const sameCategory = !left.category || !right.category || normalize(left.category) === normalize(right.category);
     const leftAnswer = normalize(left.answer);
     const rightAnswer = normalize(right.answer);
     const sameAnswer = Boolean(leftAnswer && rightAnswer && leftAnswer === rightAnswer && !['vrai', 'faux'].includes(leftAnswer));
     const options = optionSimilarity(left, right);
 
-    if (overlap.shared >= 2 && (overlap.jaccard >= 0.52 || overlap.containment >= 0.7)) return true;
+    if (overlap.shared >= 2 && (overlap.jaccard >= 0.5 || overlap.containment >= 0.68)) return true;
     if (sameCategory && options >= 0.75) return true;
-    if (sameCategory && sameAnswer && overlap.shared >= 2 && (overlap.jaccard >= 0.25 || overlap.containment >= 0.42)) return true;
-    if (sameCategory && sameAnswer && overlap.shared >= 1 && Math.max(leftTokens.size, rightTokens.size) <= 5) return true;
+    if (sameCategory && sameAnswer && overlap.shared >= 2 && (overlap.jaccard >= 0.22 || overlap.containment >= 0.4)) return true;
+    if (sameCategory && sameAnswer && overlap.shared >= 1 && Math.max(leftTokens.size, rightTokens.size) <= 6) return true;
     if (sameCategory && sameAnswer && options >= 0.5) return true;
     return false;
   }
@@ -121,18 +124,21 @@
     return accepted;
   }
 
+  function loadJsonArray(key) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
   function loadHistory() {
-    let structured = [];
-    let legacy = [];
-    try {
-      const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-      if (Array.isArray(parsed)) structured = parsed.map(toEntry).filter((entry) => entry.question);
-    } catch {}
-    try {
-      const parsed = JSON.parse(localStorage.getItem(LEGACY_USED_KEY) || '[]');
-      if (Array.isArray(parsed)) legacy = parsed.map(toEntry).filter((entry) => entry.question);
-    } catch {}
-    return dedupe([...structured, ...legacy]).slice(-MAX_HISTORY);
+    const all = [
+      ...loadJsonArray(HISTORY_KEY),
+      ...LEGACY_HISTORY_KEYS.flatMap(loadJsonArray),
+    ].map(toEntry).filter((entry) => entry.question);
+    return dedupe(all).slice(-MAX_HISTORY);
   }
 
   function saveHistory(entries) {
@@ -151,13 +157,16 @@
         if (!newest || session.savedAt > newest.savedAt) newest = session;
       } catch {}
     }
-    if (!newest?.selectedQuestions?.length) return;
-    saveHistory([...loadHistory(), ...newest.selectedQuestions]);
+    if (newest?.selectedQuestions?.length) {
+      saveHistory([...loadHistory(), ...newest.selectedQuestions]);
+    }
   }
 
   Storage.prototype.setItem = function semanticHistorySetItem(key, value) {
     nativeSetItem.call(this, key, value);
-    if (this === localStorage && key === LEGACY_USED_KEY) queueMicrotask(captureLatestSession);
+    if (this === localStorage && (key === 'grand-quiz-used-questions-v2' || key.startsWith(SESSION_PREFIX))) {
+      queueMicrotask(captureLatestSession);
+    }
   };
 
   function prepareLocalBank() {
@@ -182,15 +191,37 @@
   function jsonResponse(data, response, status = response?.status || 200) {
     const headers = new Headers(response?.headers || {});
     headers.set('Content-Type', 'application/json; charset=utf-8');
-    return new Response(JSON.stringify(data), { status, statusText: response?.statusText || '', headers });
+    return new Response(JSON.stringify(data), {
+      status,
+      statusText: response?.statusText || '',
+      headers,
+    });
+  }
+
+  async function reviewQuestions(questions, categories, blockers) {
+    const response = await nativeFetch('/api/review-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        questions,
+        categories,
+        history: blockers.slice(-180),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'La seconde vérification des questions a échoué.');
+    return Array.isArray(data.questions) ? data.questions : [];
   }
 
   window.fetch = async function semanticDedupeFetch(input, init = {}) {
     if (!isGenerationRequest(input) || typeof init.body !== 'string') return nativeFetch(input, init);
 
     let originalBody;
-    try { originalBody = JSON.parse(init.body); }
-    catch { return nativeFetch(input, init); }
+    try {
+      originalBody = JSON.parse(init.body);
+    } catch {
+      return nativeFetch(input, init);
+    }
 
     const wanted = Math.max(1, Math.min(30, Number(originalBody.count) || 1));
     const history = loadHistory();
@@ -203,52 +234,74 @@
     let lastResponse = null;
     let lastData = null;
     let received = 0;
+    let reviewed = 0;
 
-    for (let attempt = 0; attempt < 3 && accepted.length < wanted; attempt += 1) {
-      const missing = wanted - accepted.length;
-      const requestCount = Math.min(30, Math.max(missing + 8, wanted));
-      const excludeQuestions = dedupe([...blockers, ...accepted])
-        .slice(-120)
-        .map((entry) => entry.question || entry);
-      const body = {
-        ...originalBody,
-        count: requestCount,
-        exclude: excludeQuestions,
-      };
+    try {
+      for (let attempt = 0; attempt < 3 && accepted.length < wanted; attempt += 1) {
+        const missing = wanted - accepted.length;
+        const requestCount = Math.min(30, Math.max(missing + 10, wanted));
+        const excludeQuestions = dedupe([...blockers, ...accepted])
+          .slice(-120)
+          .map((entry) => entry.question || entry);
+        const body = {
+          ...originalBody,
+          count: requestCount,
+          exclude: excludeQuestions,
+        };
 
-      const response = await nativeFetch(input, { ...init, body: JSON.stringify(body) });
-      lastResponse = response;
-      let data;
-      try { data = await response.json(); }
-      catch { return response; }
-      lastData = data;
+        const response = await nativeFetch(input, { ...init, body: JSON.stringify(body) });
+        lastResponse = response;
+        const data = await response.json().catch(() => ({}));
+        lastData = data;
+        if (!response.ok) {
+          if (!accepted.length) return jsonResponse(data, response, response.status);
+          break;
+        }
 
-      if (!response.ok) {
-        if (!accepted.length) return jsonResponse(data, response, response.status);
-        break;
+        const rawCandidates = Array.isArray(data.questions) ? data.questions : [];
+        received += rawCandidates.length;
+        const reviewedCandidates = await reviewQuestions(
+          rawCandidates,
+          Array.isArray(originalBody.categories) ? originalBody.categories : [],
+          dedupe([...blockers, ...accepted]),
+        );
+        reviewed += reviewedCandidates.length;
+
+        for (const candidate of reviewedCandidates) {
+          if (accepted.length >= wanted) break;
+          if (blockers.some((blocked) => isSemanticDuplicate(candidate, blocked))) continue;
+          if (accepted.some((kept) => isSemanticDuplicate(candidate, kept))) continue;
+          accepted.push(candidate);
+        }
       }
-
-      const candidates = Array.isArray(data.questions) ? data.questions : [];
-      received += candidates.length;
-      for (const candidate of candidates) {
-        if (accepted.length >= wanted) break;
-        if (blockers.some((blocked) => isSemanticDuplicate(candidate, blocked))) continue;
-        if (accepted.some((kept) => isSemanticDuplicate(candidate, kept))) continue;
-        accepted.push(candidate);
-      }
+    } catch (error) {
+      return jsonResponse({
+        error: error.message || 'Le contrôle qualité approfondi a échoué.',
+        code: 'quality_review_failed',
+      }, lastResponse, 502);
     }
 
     pruneLocalBankAgainst(accepted);
     const result = {
       ...(lastData || {}),
       questions: accepted.slice(0, wanted),
+      qualityControl: 'generation-plus-independent-review-v2',
       semanticDeduplication: {
         requested: wanted,
         retained: Math.min(wanted, accepted.length),
-        rejected: Math.max(0, received - accepted.length),
+        generated: received,
+        approvedByReviewer: reviewed,
         historyCompared: blockers.length,
       },
     };
+
+    if (accepted.length < wanted) {
+      return jsonResponse({
+        ...result,
+        error: `Contrôle qualité trop strict : ${accepted.length}/${wanted} questions seulement ont été validées. Relance la génération ou sélectionne davantage de catégories.`,
+      }, lastResponse, 502);
+    }
+
     return jsonResponse(result, lastResponse, 200);
   };
 
