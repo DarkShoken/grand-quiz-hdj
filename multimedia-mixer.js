@@ -15,6 +15,17 @@
     return copy;
   }
 
+  function shuffleQuestion(question) {
+    if (question?.type !== 'mcq' || !Array.isArray(question.options) || question.options.length < 2) return { ...question };
+    const entries = question.options.map((text, index) => ({ text, correct: index === Number(question.answer) }));
+    const mixed = shuffled(entries);
+    return {
+      ...question,
+      options: mixed.map((entry) => entry.text),
+      answer: mixed.findIndex((entry) => entry.correct),
+    };
+  }
+
   function ensureSetting() {
     if (document.getElementById('specialFormatSelect')) return;
     const speed = document.getElementById('speedSelect')?.closest('.field');
@@ -62,8 +73,9 @@
         .filter((q, index, arr) => arr.findIndex((x) => x.id === q.id) === index);
 
       const chosen = [];
-      for (const candidate of available) {
+      for (const rawCandidate of available) {
         if (chosen.length >= specialCount) break;
+        const candidate = shuffleQuestion(rawCandidate);
         if (semantic?.dedupe) {
           const accepted = semantic.dedupe([candidate], [...data.questions, ...chosen], 1);
           if (!accepted.length) continue;
