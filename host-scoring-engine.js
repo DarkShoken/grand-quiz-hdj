@@ -11,6 +11,7 @@
   let lastTextQuestionId = null;
   let lastTextResults = null;
   let lastTextExpected = '';
+  let activeQuestionToken = '';
   const latestRevision = new NativeMap();
 
   function normalizeText(value) {
@@ -160,11 +161,17 @@
       const results = {};
       for (const [id, player] of playersMap.entries()) {
         const answer = nativeGet.call(answersMap, id);
+        if (answer?.scoredQuestionId === questionId && typeof answer.correct === 'boolean') {
+          results[id] = { correct: answer.correct, points: Number(answer.points) || 0 };
+          continue;
+        }
+
         const correct = Boolean(answer) && textAnswerIsCorrect(answer.value, expected);
         const points = pointsFor(answer, correct, payload);
         if (answer && typeof answer === 'object') {
           answer.correct = correct;
           answer.points = points;
+          answer.scoredQuestionId = questionId;
         }
         if (player) player.score = (Number(player.score) || 0) + points;
         results[id] = { correct, points };
@@ -179,6 +186,17 @@
     payload.celebrate = Object.values(lastTextResults).some((result) => result.points > 0);
     payload.players = publicPlayers();
     payload.ranking = ranking(payload.mode);
+  }
+
+  function syncQuestionBoundary(payload) {
+    if (payload.phase !== 'question' || !payload.question?.id) return;
+    const token = `${Number(payload.questionIndex) || 0}|${payload.question.id}`;
+    if (token === activeQuestionToken) return;
+    activeQuestionToken = token;
+    latestRevision.clear();
+    lastTextQuestionId = null;
+    lastTextResults = null;
+    lastTextExpected = '';
   }
 
   function syncPublicAnswerState(payload) {
@@ -223,6 +241,7 @@
       const originalSend = transport.send.bind(transport);
       transport.send = (type, payload = {}) => {
         if (type === 'state' && payload && typeof payload === 'object') {
+          syncQuestionBoundary(payload);
           scoreFreeText(payload);
           syncPublicAnswerState(payload);
         }
