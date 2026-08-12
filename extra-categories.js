@@ -15,6 +15,7 @@
     'Anglais',
     'Automobile',
     'Agriculture',
+    'Expressions françaises des régions',
   ];
 
   const cleaned = categories
