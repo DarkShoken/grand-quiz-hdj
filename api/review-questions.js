@@ -21,6 +21,15 @@ function extractOutputText(data) {
     .trim();
 }
 
+function explanationConfirmsAnswer(explanation, answer) {
+  const exp = normalize(explanation);
+  const ans = normalize(answer);
+  if (!exp || !ans) return false;
+  if (/^\d+(?:\.\d+)?$/.test(ans)) return exp.includes(ans);
+  if (ans.length <= 3) return true;
+  return exp.includes(ans);
+}
+
 function normalizeReviewedQuestion(raw, allowedCategories) {
   if (!raw || raw.approved !== true) return null;
 
@@ -48,6 +57,7 @@ function normalizeReviewedQuestion(raw, allowedCategories) {
     explanation,
     topicKey,
     reviewed: true,
+    independentlySolved: true,
   };
 
   if (type === 'mcq') {
@@ -57,7 +67,7 @@ function normalizeReviewedQuestion(raw, allowedCategories) {
     if (options.length !== 4 || new Set(options.map(normalize)).size !== 4) return null;
     const answerText = cleanText(raw.answer, 65);
     const answer = options.findIndex((option) => normalize(option) === normalize(answerText));
-    if (answer < 0) return null;
+    if (answer < 0 || !explanationConfirmsAnswer(explanation, answerText)) return null;
     return { ...base, options, answer };
   }
 
@@ -69,12 +79,12 @@ function normalizeReviewedQuestion(raw, allowedCategories) {
 
   if (type === 'numeric') {
     const answer = Number(String(raw.answer).replace(',', '.'));
-    if (!Number.isFinite(answer)) return null;
+    if (!Number.isFinite(answer) || !explanationConfirmsAnswer(explanation, String(answer))) return null;
     return { ...base, answer, unit: cleanText(raw.unit, 40) };
   }
 
   const answerText = cleanText(raw.answer, 100);
-  if (!answerText) return null;
+  if (!answerText || !explanationConfirmsAnswer(explanation, answerText)) return null;
   return { ...base, answerText };
 }
 
@@ -111,6 +121,20 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  // Important : le contrôleur ne reçoit volontairement NI la réponse proposée,
+  // NI l'explication du premier modèle. Il doit résoudre chaque question lui-même.
+  const blindQuestions = questions.map((question) => ({
+    id: cleanText(question?.id, 120),
+    category: cleanText(question?.category, 60),
+    difficulty: cleanText(question?.difficulty, 20),
+    type: cleanText(question?.type, 20),
+    question: cleanText(question?.question, 150),
+    options: Array.isArray(question?.options)
+      ? question.options.map((item) => cleanText(item, 65)).filter(Boolean).slice(0, 4)
+      : [],
+    unit: cleanText(question?.unit, 40),
+  }));
+
   const schema = {
     type: 'object',
     required: ['reviews'],
@@ -143,42 +167,56 @@ module.exports = async function handler(req, res) {
   };
 
   const prompt = [
-    'Tu es le rédacteur en chef et contrôleur qualité d’un jeu télévisé français destiné à des adultes en hôpital de jour.',
-    'Relis chaque question indépendamment. Tu dois être sévère : en cas de doute, rejette-la au lieu de l’approuver.',
+    'Tu es le vérificateur final indépendant d’un jeu télévisé français destiné à des adultes.',
+    'IMPORTANT : les réponses et explications proposées par le premier auteur t’ont volontairement été cachées. Tu dois résoudre chaque question toi-même, sans supposer que l’auteur avait raison.',
+    'Tu dois être conservateur : si tu n’es pas certain du fait ou si plusieurs réponses sont défendables, rejette la question.',
     `Catégories autorisées : ${categories.join(', ')}.`,
     '',
+    'MÉTHODE OBLIGATOIRE POUR CHAQUE QUESTION :',
+    '1. Lis seulement l’intitulé et les choix éventuels.',
+    '2. Détermine toi-même la réponse à partir d’une connaissance stable et incontestable.',
+    '3. Vérifie mentalement que les autres choix sont faux dans le cadre exact de la question.',
+    '4. Si l’intitulé est imprécis, daté, dépend d’une convention non précisée ou exige une information obscure dont tu n’es pas sûr, rejette la question.',
+    '5. Si elle est sûre, renvoie la bonne réponse que TU as déterminée et rédige une explication courte qui mentionne explicitement cette réponse.',
+    '',
     'CONTRÔLE FACTUEL :',
-    '- Vérifie que l’intitulé, la bonne réponse et l’explication sont exacts, stables et cohérents entre eux.',
-    '- Rejette les faits incertains, datés, dépendant de l’actualité, les records susceptibles de changer sans date de référence, et les formulations approximatives.',
-    '- Pour la catégorie Records du monde, n’approuve qu’un record historique daté ou une question dont la date de référence est explicitement indiquée.',
-    '- Ne transforme jamais une information douteuse en certitude.',
+    '- Privilégie les faits stables, largement documentés et sans exception raisonnable.',
+    '- Rejette les légendes populaires, approximations, généralisations, superlatifs sans critère, statistiques mouvantes et informations dépendant de l’actualité.',
+    '- Pour Records du monde : uniquement des records humains clairement définis, avec date de référence lorsqu’ils peuvent évoluer.',
+    '- Pour Expressions françaises des régions : l’expression doit être réellement attestée dans la région indiquée ; rejette les usages trop diffus, discutables ou attribués à une région unique sans certitude.',
+    '- Pour les questions historiques, scientifiques ou géographiques : refuse toute formulation qui confond date, lieu, personne, unité, classification ou causalité.',
     '',
-    'PERTINENCE DES CHOIX :',
-    '- Un QCM doit comporter exactement quatre propositions homogènes et une seule réponse incontestablement correcte.',
-    '- Chacun des trois distracteurs doit être clairement faux dans le cadre précis de la question.',
-    '- Rejette toute question où deux réponses peuvent raisonnablement se défendre, même si l’une paraît plus connue.',
-    '- Rejette les questions subjectives : symbole, emblème, plus représentatif, meilleur, principal sans critère explicite, etc.',
+    'QCM :',
+    '- Exactement quatre choix homogènes et une seule réponse incontestablement correcte.',
+    '- answer doit être exactement le texte de la bonne option.',
+    '- Si deux options peuvent être vraies selon une interprétation raisonnable, approved=false.',
     '',
-    'DIFFICULTÉ POUR UN PUBLIC ADULTE DE CULTURE GÉNÉRALE :',
-    '- Facile : connaissance quotidienne ou scolaire très répandue, réponse attendue de plus de 70 % du public.',
-    '- Moyen : connaissance générale nécessitant un vrai rappel, réponse attendue de 30 à 70 % du public.',
-    '- Difficile : connaissance précise ou spécialisée, réponse attendue de moins de 30 % du public, sans être une anecdote absurde.',
-    '- Corrige obligatoirement l’étiquette de difficulté si elle ne correspond pas à cette grille.',
+    'VRAI/FAUX :',
+    '- L’énoncé doit être entièrement vrai ou entièrement faux sans exception raisonnable.',
+    '- answer vaut true ou false.',
+    '',
+    'NUMÉRIQUE :',
+    '- Accepte seulement une valeur exacte et stable.',
+    '- answer contient uniquement la valeur numérique correcte.',
+    '',
+    'BUZZER / LIBRE :',
+    '- La réponse attendue doit être courte et unique.',
+    '- Évite les questions où plusieurs formulations ou entités différentes pourraient être considérées comme correctes.',
+    '',
+    'DIFFICULTÉ :',
+    '- Facile : connaissance très répandue, >70 % de réussite attendue.',
+    '- Moyen : vraie culture générale, environ 30–70 %.',
+    '- Difficile : connaissance précise, <30 %, mais pas anecdote obscure ou arbitraire.',
+    '- Corrige l’étiquette si nécessaire.',
     '',
     'REDONDANCE :',
-    '- Compare toutes les questions entre elles et avec l’historique fourni.',
-    '- Deux formulations qui testent le même fait, la même relation sujet-réponse ou les mêmes choix sont des doublons.',
-    '- En cas de doublon dans la série, conserve uniquement la formulation la plus précise et rejette les autres.',
-    '',
-    'RÉÉCRITURE :',
-    '- Tu peux corriger légèrement une question, une explication, une difficulté ou des distracteurs si le fond est sûr.',
-    '- N’approuve pas une question dont le fond nécessiterait une invention ou une supposition.',
-    '- topicKey doit résumer le fait testé sous une forme stable et courte, par exemple « paris|fleuve|seine ».',
-    '- Pour mcq, answer doit être exactement le texte de la bonne option. Pour truefalse, answer vaut true ou false. Pour numeric, answer contient seulement la valeur exacte. Pour buzzer/free, answer contient la réponse textuelle attendue.',
+    '- Compare les questions entre elles et avec l’historique.',
+    '- Deux questions testant le même fait ou la même relation sujet-réponse sont des doublons : n’en garde qu’une.',
+    '- topicKey résume le fait testé sous une forme stable, par exemple « paris|fleuve|seine ».',
     '',
     `HISTORIQUE À NE PAS RÉPÉTER : ${JSON.stringify(history)}`,
     '',
-    `QUESTIONS À CONTRÔLER : ${JSON.stringify(questions)}`,
+    `QUESTIONS À RÉSOUDRE ET VÉRIFIER : ${JSON.stringify(blindQuestions)}`,
   ].join('\n');
 
   try {
@@ -192,8 +230,8 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.08,
-          topP: 0.65,
+          temperature: 0.02,
+          topP: 0.45,
           maxOutputTokens: 22000,
           responseMimeType: 'application/json',
           responseSchema: schema,
@@ -204,14 +242,14 @@ module.exports = async function handler(req, res) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       res.status(response.status === 429 ? 429 : 502).json({
-        error: data?.error?.message || 'La seconde vérification Gemini a échoué.',
+        error: data?.error?.message || 'La vérification indépendante Gemini a échoué.',
       });
       return;
     }
 
     const output = extractOutputText(data);
     if (!output) {
-      res.status(502).json({ error: 'Le contrôleur qualité n’a renvoyé aucun résultat.' });
+      res.status(502).json({ error: 'Le contrôleur indépendant n’a renvoyé aucun résultat.' });
       return;
     }
 
@@ -225,10 +263,10 @@ module.exports = async function handler(req, res) {
       reviewedCount: questions.length,
       approvedCount: approved.length,
       model: DEFAULT_MODEL,
-      qualityControl: 'two-pass-editorial-review-v1',
+      qualityControl: 'blind-independent-answer-review-v2',
     });
   } catch (error) {
-    console.error('Question review failed', error);
-    res.status(500).json({ error: 'Impossible de terminer la seconde vérification des questions.' });
+    console.error('Independent question review failed', error);
+    res.status(500).json({ error: 'Impossible de terminer la vérification indépendante des questions.' });
   }
 };
