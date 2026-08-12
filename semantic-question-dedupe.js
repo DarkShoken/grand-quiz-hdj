@@ -205,7 +205,7 @@
       body: JSON.stringify({
         questions,
         categories,
-        history: blockers.slice(-180),
+        history: blockers.slice(-100),
       }),
     });
     const data = await response.json().catch(() => ({}));
@@ -237,11 +237,11 @@
     let reviewed = 0;
 
     try {
-      for (let attempt = 0; attempt < 3 && accepted.length < wanted; attempt += 1) {
+      for (let attempt = 0; attempt < 2 && accepted.length < wanted; attempt += 1) {
         const missing = wanted - accepted.length;
-        const requestCount = Math.min(30, Math.max(missing + 10, wanted));
+        const requestCount = Math.min(30, Math.max(missing + 4, wanted));
         const excludeQuestions = dedupe([...blockers, ...accepted])
-          .slice(-120)
+          .slice(-100)
           .map((entry) => entry.question || entry);
         const body = {
           ...originalBody,
@@ -285,7 +285,7 @@
     const result = {
       ...(lastData || {}),
       questions: accepted.slice(0, wanted),
-      qualityControl: 'generation-plus-independent-review-v2',
+      qualityControl: 'generation-plus-independent-review-v3-fast',
       semanticDeduplication: {
         requested: wanted,
         retained: Math.min(wanted, accepted.length),
@@ -298,7 +298,7 @@
     if (accepted.length < wanted) {
       return jsonResponse({
         ...result,
-        error: `Contrôle qualité trop strict : ${accepted.length}/${wanted} questions seulement ont été validées. Relance la génération ou sélectionne davantage de catégories.`,
+        error: `Contrôle qualité : ${accepted.length}/${wanted} questions validées. Le moteur rapide complétera si nécessaire.`,
       }, lastResponse, 502);
     }
 
