@@ -10,8 +10,8 @@
   let activeQuestionId = null;
   let correctedQuestionId = null;
   let correctedResults = null;
-  let correctedLabel = '';
   const scoreBaseline = new NativeMap();
+  const expectedByQuestion = new NativeMap();
 
   class ScoringCapturedMap extends ParentMap {
     constructor(iterable) {
@@ -28,7 +28,11 @@
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
+      .replace(/œ/g, 'oe')
+      .replace(/æ/g, 'ae')
       .replace(/[’']/g, ' ')
+      .replace(/\bst\b/g, 'saint')
+      .replace(/\bste\b/g, 'sainte')
       .replace(/\b(?:le|la|les|un|une|des|du|de|d|l)\b/g, ' ')
       .replace(/[^a-z0-9]+/g, ' ')
       .replace(/\s+/g, ' ')
@@ -66,9 +70,22 @@
     const b = normalizeText(expected);
     if (!a || !b || !sameDigits(submitted, expected)) return false;
     if (a === b) return true;
+
     const distance = levenshtein(a, b);
-    const allowed = b.length >= 12 ? 2 : b.length >= 5 ? 1 : 0;
-    return distance <= allowed && distance / Math.max(a.length, b.length) <= 0.16;
+    const longest = Math.max(a.length, b.length);
+    const allowed = longest >= 18 ? 3 : longest >= 10 ? 2 : longest >= 5 ? 1 : 0;
+    if (distance <= allowed && distance / longest <= 0.18) return true;
+
+    // Accepte une précision supplémentaire sans pénaliser une réponse exacte :
+    // « Paris France » pour « Paris », par exemple. On exige au moins 4 caractères
+    // pour éviter qu'un mot trop court soit validé accidentellement.
+    if (b.length >= 4) {
+      const aTokens = new Set(a.split(' ').filter(Boolean));
+      const bTokens = b.split(' ').filter(Boolean);
+      if (bTokens.length && bTokens.every((token) => aTokens.has(token))) return true;
+    }
+
+    return false;
   }
 
   function parseSingleNumber(value) {
@@ -88,13 +105,29 @@
     return points;
   }
 
+  function isWrittenType(type) {
+    const normalized = String(type || '').toLowerCase();
+    return !['mcq', 'truefalse', 'numeric', 'buzzer'].includes(normalized);
+  }
+
+  function readExpectedFromDom() {
+    return document.querySelector('#hostStage .host-answer-key strong')?.textContent?.trim() || '';
+  }
+
+  function rememberExpected(questionId) {
+    if (!questionId) return '';
+    const fromDom = readExpectedFromDom();
+    if (fromDom && !/^undefined$/i.test(fromDom)) expectedByQuestion.set(questionId, fromDom);
+    return fromDom || expectedByQuestion.get(questionId) || '';
+  }
+
   function captureBaseline(payload) {
     if (!playersMap) return;
-    if (payload.phase === 'question' && payload.question?.id !== activeQuestionId) {
-      activeQuestionId = payload.question?.id || null;
+    const questionId = payload.question?.id || null;
+    if (payload.phase === 'question' && questionId !== activeQuestionId) {
+      activeQuestionId = questionId;
       correctedQuestionId = null;
       correctedResults = null;
-      correctedLabel = '';
       scoreBaseline.clear();
       for (const [id, player] of playersMap.entries()) scoreBaseline.set(id, Number(player?.score) || 0);
     } else {
@@ -102,8 +135,7 @@
         if (!scoreBaseline.has(id)) scoreBaseline.set(id, Number(player?.score) || 0);
       }
     }
-    const domExpected = document.querySelector('#hostStage .host-answer-key strong')?.textContent?.trim();
-    if (domExpected) correctedLabel = domExpected;
+    if (payload.phase === 'question' && questionId) rememberExpected(questionId);
   }
 
   function rankingFromPlayers(mode) {
@@ -125,16 +157,22 @@
 
   function applyStrictResult(payload) {
     if (!playersMap || !answersMap || payload.phase !== 'reveal' || !payload.question?.id) return;
+
     const type = String(payload.question.type || '').toLowerCase();
     const isNumeric = type === 'numeric';
-    const isFreeText = ['free', 'text', 'open', 'open_text', 'freeform', 'written'].includes(type);
+    const isFreeText = isWrittenType(type);
     if (!isNumeric && !isFreeText) return;
 
     const questionId = payload.question.id;
-    const expected = isNumeric
-      ? parseSingleNumber(payload.correctLabel)
-      : (correctedLabel || document.querySelector('#hostStage .host-answer-key strong')?.textContent?.trim() || payload.correctLabel || '');
-    if ((isNumeric && !Number.isFinite(expected)) || (isFreeText && !normalizeText(expected))) return;
+    const expectedText = isFreeText
+      ? (readExpectedFromDom() || expectedByQuestion.get(questionId) || payload.correctLabel || '')
+      : '';
+    const expectedNumber = isNumeric ? parseSingleNumber(payload.correctLabel) : NaN;
+
+    if (isNumeric && !Number.isFinite(expectedNumber)) return;
+    if (isFreeText && !normalizeText(expectedText)) return;
+
+    if (isFreeText) expectedByQuestion.set(questionId, expectedText);
 
     if (correctedQuestionId !== questionId || !correctedResults) {
       const results = {};
@@ -144,10 +182,12 @@
         const baseline = scoreBaseline.has(id)
           ? Number(scoreBaseline.get(id)) || 0
           : Math.max(0, (Number(player?.score) || 0) - hostAward);
+
         const correct = Boolean(answer) && (isNumeric
-          ? parseSingleNumber(answer.value) === expected
-          : textAnswerIsCorrect(answer.value, expected));
+          ? parseSingleNumber(answer.value) === expectedNumber
+          : textAnswerIsCorrect(answer.value, expectedText));
         const points = pointsFor(answer, correct, payload);
+
         player.score = baseline + points;
         if (answer && typeof answer === 'object') {
           answer.correct = correct;
@@ -155,15 +195,24 @@
         }
         results[id] = { correct, points };
       }
+
       correctedQuestionId = questionId;
       correctedResults = results;
-      if (isFreeText) correctedLabel = String(expected);
     }
 
     payload.lastResults = { ...correctedResults };
     payload.ranking = rankingFromPlayers(payload.mode);
     payload.celebrate = Object.values(correctedResults).some((result) => result.points > 0);
-    if (isFreeText && correctedLabel) payload.correctLabel = correctedLabel;
+    if (isFreeText) payload.correctLabel = expectedByQuestion.get(questionId) || expectedText;
+
+    // snapshot() a déjà copié les joueurs avant l'interception : on resynchronise
+    // leurs scores dans le payload envoyé à la TV et aux téléphones.
+    if (Array.isArray(payload.players)) {
+      payload.players = payload.players.map((publicPlayer) => {
+        const live = playersMap.get(publicPlayer.id);
+        return live ? { ...publicPlayer, score: Number(live.score) || 0 } : publicPlayer;
+      });
+    }
   }
 
   const originalCreateTransport = G.createTransport.bind(G);
@@ -182,13 +231,16 @@
   };
 
   const observer = new MutationObserver(() => {
-    const expected = document.querySelector('#hostStage .host-answer-key strong')?.textContent?.trim();
-    if (expected) correctedLabel = expected;
-    if (correctedQuestionId && correctedLabel) {
+    if (activeQuestionId) rememberExpected(activeQuestionId);
+    if (correctedQuestionId) {
+      const expected = expectedByQuestion.get(correctedQuestionId) || '';
       const revealTitle = document.querySelector('#hostStage .host-question');
-      if (revealTitle && /undefined/i.test(revealTitle.textContent || '')) revealTitle.textContent = `✅ ${correctedLabel}`;
+      if (expected && revealTitle && /undefined/i.test(revealTitle.textContent || '')) {
+        revealTitle.textContent = `✅ ${expected}`;
+      }
     }
   });
+
   const start = () => observer.observe(document.body, { childList: true, subtree: true, characterData: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
