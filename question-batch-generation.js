@@ -1,17 +1,13 @@
 (() => {
   const previousFetch = window.fetch.bind(window);
   const generationPath = /\/api\/generate-questions(?:\?|$)/;
-  const BATCH_SIZE = 6;
-  const MAX_ROUNDS = 8;
+  const BATCH_SIZE = 10;
+  const MAX_CONCURRENCY = 2;
 
   function requestUrl(input) {
     if (typeof input === 'string') return input;
     if (input instanceof URL) return input.href;
     return input?.url || '';
-  }
-
-  function wait(delay) {
-    return new Promise((resolve) => setTimeout(resolve, delay));
   }
 
   function setStatus(text) {
@@ -51,6 +47,23 @@
     });
   }
 
+  async function runPool(tasks, worker, concurrency = MAX_CONCURRENCY) {
+    const results = new Array(tasks.length);
+    let cursor = 0;
+
+    async function consume() {
+      while (true) {
+        const index = cursor++;
+        if (index >= tasks.length) return;
+        try { results[index] = await worker(tasks[index], index); }
+        catch (error) { results[index] = { error }; }
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, consume));
+    return results;
+  }
+
   window.fetch = async function batchedQuestionFetch(input, init = {}) {
     const url = requestUrl(input);
     if (!generationPath.test(url) || typeof init.body !== 'string') return previousFetch(input, init);
@@ -66,66 +79,83 @@
     const originalExcluded = Array.isArray(originalBody.exclude) ? originalBody.exclude : [];
     let lastResponse = null;
     let lastData = {};
-    let failedRounds = 0;
-    const plannedRounds = Math.min(MAX_ROUNDS, Math.ceil(wanted / BATCH_SIZE) + 3);
 
-    for (let round = 0; round < plannedRounds && accepted.length < wanted; round += 1) {
+    const batches = [];
+    for (let remaining = wanted; remaining > 0; remaining -= BATCH_SIZE) {
+      batches.push(Math.min(BATCH_SIZE, remaining));
+    }
+
+    setStatus(`Création accélérée · ${batches.length} lots, jusqu’à ${MAX_CONCURRENCY} en parallèle…`);
+
+    const initialResults = await runPool(batches, async (batchCount, index) => {
+      const response = await previousFetch(input, {
+        ...init,
+        body: JSON.stringify({
+          ...originalBody,
+          count: batchCount,
+          exclude: originalExcluded.slice(-100),
+          batchMode: true,
+          batchIndex: index,
+        }),
+      });
+      const data = await readData(response);
+      return { response, data };
+    });
+
+    for (const result of initialResults) {
+      if (!result || result.error) continue;
+      lastResponse = result.response;
+      lastData = result.data || lastData;
+      const candidates = Array.isArray(result.data?.questions) ? result.data.questions : [];
+      const fresh = dedupeQuestions(candidates, accepted);
+      for (const question of fresh) {
+        if (accepted.length >= wanted) break;
+        accepted.push(question);
+      }
+      setStatus(`Création accélérée · ${accepted.length}/${wanted} questions validées…`);
+    }
+
+    if (accepted.length < wanted) {
       const missing = wanted - accepted.length;
-      const batchCount = Math.min(BATCH_SIZE, Math.max(4, missing));
-      const exclude = [
-        ...originalExcluded,
-        ...accepted.map((question) => question.question),
-      ].filter(Boolean).slice(-120);
-
-      setStatus(`Création par petits lots · ${accepted.length}/${wanted} questions validées…`);
-
+      setStatus(`Complément rapide · ${accepted.length}/${wanted} questions validées…`);
       try {
         const response = await previousFetch(input, {
           ...init,
           body: JSON.stringify({
             ...originalBody,
-            count: batchCount,
-            exclude,
+            count: Math.min(BATCH_SIZE, Math.max(4, missing)),
+            exclude: [
+              ...originalExcluded,
+              ...accepted.map((question) => question.question),
+            ].filter(Boolean).slice(-100),
             batchMode: true,
+            topUp: true,
           }),
         });
         lastResponse = response;
         const data = await readData(response);
-        lastData = data;
-        const candidates = Array.isArray(data.questions) ? data.questions : [];
-        const fresh = dedupeQuestions(candidates, accepted);
-
+        lastData = data || lastData;
+        const fresh = dedupeQuestions(Array.isArray(data.questions) ? data.questions : [], accepted);
         for (const question of fresh) {
           if (accepted.length >= wanted) break;
           accepted.push(question);
         }
-
-        if (!fresh.length) {
-          failedRounds += 1;
-          await wait(700 + round * 250);
-        } else {
-          failedRounds = 0;
-        }
       } catch (error) {
-        console.warn('Lot de questions indisponible', error);
-        failedRounds += 1;
-        await wait(900 + round * 300);
+        console.warn('Complément IA indisponible', error);
       }
-
-      if (failedRounds >= 3 && accepted.length) break;
     }
 
     if (!accepted.length) {
       return lastResponse || makeResponse({
-        error: 'Aucun lot de questions n’a pu être généré pour le moment.',
-        code: 'all_batches_failed',
+        error: 'Aucune question IA n’a pu être générée pour le moment.',
+        code: 'all_fast_batches_failed',
       }, null, 503);
     }
 
     setStatus(
       accepted.length >= wanted
         ? `${wanted} questions contrôlées sont prêtes.`
-        : `${accepted.length}/${wanted} questions IA validées · complément local en préparation…`,
+        : `${accepted.length}/${wanted} questions IA validées · complément local immédiat…`,
     );
 
     return makeResponse({
@@ -135,8 +165,11 @@
       partial: accepted.length < wanted,
       batchGeneration: {
         enabled: true,
+        mode: 'parallel-fast',
         retained: Math.min(wanted, accepted.length),
         requested: wanted,
+        batches: batches.length,
+        concurrency: MAX_CONCURRENCY,
       },
     }, lastResponse, 200);
   };
