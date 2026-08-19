@@ -177,6 +177,25 @@
     return '';
   }
 
+  function scoreGroups(ranking) {
+    const sorted = [...(ranking || [])].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
+    const groups = [];
+    for (const player of sorted) {
+      const score = Number(player.score) || 0;
+      let group = groups[groups.length - 1];
+      if (!group || group.score !== score) {
+        group = { rank: groups.length + 1, score, players: [] };
+        groups.push(group);
+      }
+      group.players.push(player);
+    }
+    return groups;
+  }
+
+  function denseRanking(ranking) {
+    return scoreGroups(ranking).flatMap((group) => group.players.map((player) => ({ ...player, denseRank: group.rank })));
+  }
+
   function renderQuestion() {
     const question = currentState.question;
     if (!question) return;
@@ -233,14 +252,21 @@
   function renderRanking(final) {
     const ranking = currentState.ranking || [];
     if (final) {
-      const top = ranking.slice(0, 3);
-      const ordered = [top[1], top[0], top[2]].filter(Boolean);
-      stage.innerHTML = `<article class="question-card ranking-card"><div class="hero-kicker">${currentState.mode === 'teams' ? 'CLASSEMENT DES ÉQUIPES' : 'PODIUM FINAL'}</div><div class="question-text">🏆 ${currentState.mode === 'teams' ? 'Équipe gagnante' : 'Les champions du quiz'}</div><div class="podium">${ordered.map((player) => { const position = ranking.indexOf(player); return `<div class="podium-step ${position === 0 ? 'first' : position === 1 ? 'second' : 'third'}"><div class="podium-medal">${['🥇', '🥈', '🥉'][position]}</div><div class="podium-name">${G.escapeHtml(player.name)}</div><div class="podium-score">${player.score} pts</div></div>`; }).join('')}</div></article>`;
+      const groups = scoreGroups(ranking).slice(0, 3);
+      const ordered = [groups[1], groups[0], groups[2]].filter(Boolean);
+      stage.innerHTML = `<article class="question-card ranking-card"><div class="hero-kicker">${currentState.mode === 'teams' ? 'CLASSEMENT DES ÉQUIPES' : 'PODIUM FINAL'}</div><div class="question-text">🏆 ${currentState.mode === 'teams' ? 'Équipe gagnante' : 'Les champions du quiz'}</div><div class="podium">${ordered.map((group) => {
+        const medal = ['🥇', '🥈', '🥉'][group.rank - 1] || '';
+        const stepClass = group.rank === 1 ? 'first' : group.rank === 2 ? 'second' : 'third';
+        const names = group.players.map((player) => `<div class="podium-name">${G.escapeHtml(player.name)}</div>`).join('');
+        const tie = group.players.length > 1 ? `<div class="podium-tie-label">EX ÆQUO · ${group.players.length}</div>` : '';
+        return `<div class="podium-step ${stepClass}"><div class="podium-medal">${medal}</div>${names}${tie}<div class="podium-score">${group.score} pts</div></div>`;
+      }).join('')}</div></article>`;
       G.confetti(120);
       return;
     }
 
     const medals = ['🥇', '🥈', '🥉'];
-    stage.innerHTML = `<article class="question-card ranking-card"><div class="hero-kicker">CLASSEMENT</div><div class="question-text">Qui prend la tête ?</div><div class="ranking">${ranking.slice(0, 10).map((player, index) => `<div class="rank-row"><div class="rank-pos">${medals[index] || index + 1}</div><div class="rank-name">${G.escapeHtml(player.name)}</div><div class="rank-score">${player.score} pts</div></div>`).join('')}</div></article>`;
+    const rows = denseRanking(ranking).slice(0, 10);
+    stage.innerHTML = `<article class="question-card ranking-card"><div class="hero-kicker">CLASSEMENT</div><div class="question-text">Qui prend la tête ?</div><div class="ranking">${rows.map((player) => `<div class="rank-row"><div class="rank-pos">${medals[player.denseRank - 1] || player.denseRank}</div><div class="rank-name">${G.escapeHtml(player.name)}${rows.filter((other) => other.denseRank === player.denseRank).length > 1 ? ' <small>ex æquo</small>' : ''}</div><div class="rank-score">${player.score} pts</div></div>`).join('')}</div></article>`;
   }
 })();
