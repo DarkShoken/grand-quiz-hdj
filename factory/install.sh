@@ -124,7 +124,7 @@ replace_once(
 )
 replace_once(
     "'compound_custom': {'tools': {'enabled_tools': ['web_search','visit_website']}},",
-    "'compound_custom': {'tools': {'enabled_tools': ['web_search'])},\n        'search_settings': {'country': 'france'},",
+    "'compound_custom': {'tools': {'enabled_tools': ['web_search']}},\n        'search_settings': {'country': 'france'},",
     'outils Groq'
 )
 replace_once(
