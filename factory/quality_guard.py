@@ -13,8 +13,13 @@ SOCIAL_HOSTS = {
 
 
 def _norm(value):
-    text = unicodedata.normalize("NFD", str(value or ""))
-    text = text.encode("ascii", "ignore").decode().lower().replace("œ", "oe")
+    text = str(value or "")
+    # Préserver les frontières de mots avant la translittération ASCII :
+    # « n’appartient » doit devenir « n appartient », pas « nappartient ».
+    text = text.replace("’", " ").replace("'", " ")
+    text = text.replace("œ", "oe").replace("Œ", "OE")
+    text = unicodedata.normalize("NFD", text)
+    text = text.encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
 
@@ -124,6 +129,7 @@ IMPORTANT — NE CONFONDS PAS PLAUSIBILITÉ ET AMBIGUÏTÉ :
 RÈGLES STRICTES :
 - QCM : examine CHAQUE option. Mets dans satisfying_options uniquement les options qui répondent effectivement à la question. Il doit y en avoir exactement une.
 - Intrus : satisfying_options contient uniquement l'élément qui NE partage PAS la propriété commune demandée. Il doit y en avoir exactement un.
+- Vrai/faux : independent_answer doit être EXACTEMENT la chaîne "true" ou "false". Ne mets jamais une phrase, une justification ni le fait reformulé dans independent_answer ; place l'explication dans reason.
 - Numérique/estimation : donne la valeur qui répond exactement au libellé. Une date ou statistique mouvante doit avoir une période de référence claire ; sinon approved=false.
 - Libre/buzzer/progressive : une réponse courte unique doit être démontrée.
 - Rejette les formulations réellement trop larges dans le temps, les catégories vagues, les anachronismes et les contradictions du dossier.
@@ -139,13 +145,18 @@ Retourne uniquement un JSON conforme au schéma.
 DOSSIER FACTUEL :
 """ + str(evidence.get("text") or "") + "\nQUESTION FINALE SANS RÉPONSE :\n" + json.dumps(blind, ensure_ascii=False)
 
+    independent_schema = (
+        {"type": "string", "enum": ["true", "false"]}
+        if qtype == "truefalse"
+        else {"type": "string"}
+    )
     schema = {
         "type": "object",
         "additionalProperties": False,
         "required": ["approved", "independent_answer", "satisfying_options", "reason"],
         "properties": {
             "approved": {"type": "boolean"},
-            "independent_answer": {"type": "string"},
+            "independent_answer": independent_schema,
             "satisfying_options": {"type": "array", "items": {"type": "string"}},
             "reason": {"type": "string"},
         },
