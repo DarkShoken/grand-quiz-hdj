@@ -23,17 +23,27 @@ if [ ! -f "$TARGET" ]; then
   exit 1
 fi
 
-# Ajoute les nouvelles variables sans jamais écraser une clé existante.
 touch "$ENV_FILE"
 ensure_env() {
   local key="$1" value="$2"
   grep -q "^${key}=" "$ENV_FILE" || printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
 }
-ensure_env GEMINI_API_KEY ""
-ensure_env GEMINI_RESEARCH_MODEL "gemini-2.5-flash-lite"
+set_env() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    sed -i "s#^${key}=.*#${key}=${value}#" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
 ensure_env TAVILY_API_KEY ""
-ensure_env SEARXNG_URL ""
-ensure_env MIN_SOURCE_DOMAINS "2"
+set_env SEARXNG_URL "http://127.0.0.1:8888"
+set_env MIN_SOURCE_DOMAINS "2"
+set_env SOURCE_FETCH_LIMIT "4"
+ensure_env GEMINI_API_KEY ""
+set_env GEMINI_RESEARCH_MODEL "gemini-3.5-flash-lite"
+set_env GEMINI_GOOGLE_SEARCH_ENABLED "0"
 
 cp "$SCRIPT_DIR/quality_guard.py" "$INSTALL_DIR/quality_guard.py"
 cp "$SCRIPT_DIR/research_provider.py" "$INSTALL_DIR/research_provider.py"
@@ -110,10 +120,11 @@ python3 -m py_compile "$INSTALL_DIR/research_provider.py"
 python3 -m py_compile "$TARGET"
 
 echo
-echo "Runtime V4 installé :"
-echo "- recherche principale : Gemini 2.5 Flash-Lite + Google Search"
-echo "- secours 1 : Tavily Basic"
-echo "- secours 2 : SearXNG local si SEARXNG_URL est configuré"
+echo "Runtime V4 gratuit installé :"
+echo "- recherche principale : SearXNG local"
+echo "- lecture directe : jusqu'à 4 pages sources par candidate"
+echo "- secours : Tavily Basic si une clé gratuite est configurée"
+echo "- Gemini 3.5 Flash-Lite conservé optionnel ; Google Search désactivé en Free Tier"
 echo "- minimum : 2 domaines Web distincts"
 echo "- rédaction finale : Gemma 3 local"
 echo "- contrôle adversarial + difficulté : Gemma 3 local"
