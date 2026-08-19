@@ -63,14 +63,14 @@
     const players = rankedPlayers(rawPlayers);
     const medals = ['🥇', '🥈', '🥉'];
     const lastGroup = groups.length >= 2 ? groups[groups.length - 1] : null;
-    const penultimateGroup = groups.length >= 4 ? groups[groups.length - 2] : null;
+    const penultimateGroup = groups.length >= 2 ? groups[groups.length - 2] : null;
     const title = latestState.mode === 'teams' ? 'Scores individuels' : 'Tous les scores';
 
     const rows = players.length
       ? players.map((player) => {
           const topClass = player.denseRank <= 3 ? ` top-${player.denseRank}` : '';
-          const isLantern = Boolean(lastGroup && player.score === lastGroup.score && player.denseRank > 3);
-          const isChocolate = Boolean(penultimateGroup && player.score === penultimateGroup.score && player.denseRank > 3);
+          const isLantern = Boolean(lastGroup && player.score === lastGroup.score);
+          const isChocolate = Boolean(!isLantern && penultimateGroup && player.score === penultimateGroup.score);
           const specialClass = isLantern ? ' special-lantern' : isChocolate ? ' special-chocolate' : '';
           const special = isLantern
             ? '<span class="final-special-award">🏮 Lanterne rouge</span>'
