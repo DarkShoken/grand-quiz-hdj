@@ -1,4 +1,5 @@
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GROUND_MODEL = process.env.GEMINI_GROUND_MODEL || 'gemini-2.5-flash';
+const REVIEW_MODEL = process.env.GEMINI_REVIEW_MODEL || 'gemini-3.1-flash-lite';
 
 const clean = (v, max=300) => String(v ?? '').replace(/\s+/g,' ').trim().slice(0,max);
 const norm = (v) => clean(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/œ/g,'oe').replace(/[^a-z0-9]+/g,' ').trim();
@@ -34,6 +35,41 @@ function extractGrounding(data){
   return {text:outputText(data),sources:sources.slice(0,16),queries:(gm.webSearchQueries||[]).map(x=>clean(x,180)).filter(Boolean).slice(0,16)};
 }
 
+function quotaInfo(data){
+  const details=Array.isArray(data?.error?.details)?data.error.details:[];
+  const ids=[];
+  let retrySeconds=0;
+  for(const detail of details){
+    if(String(detail?.['@type']||'').includes('QuotaFailure')){
+      for(const violation of detail.violations||[]){
+        if(violation?.quotaId) ids.push(String(violation.quotaId));
+      }
+    }
+    if(String(detail?.['@type']||'').includes('RetryInfo')){
+      const raw=String(detail.retryDelay||'');
+      const m=raw.match(/([0-9.]+)s/i);
+      if(m) retrySeconds=Math.max(retrySeconds,Math.ceil(Number(m[1])||0));
+    }
+  }
+  const message=String(data?.error?.message||'');
+  if(!retrySeconds){
+    const m=message.match(/retry in\s+([0-9.]+)s/i);
+    if(m) retrySeconds=Math.ceil(Number(m[1])||0);
+  }
+  const scope=ids.some(x=>/PerDay/i.test(x))?'day':ids.some(x=>/PerMinute/i.test(x))?'minute':'unknown';
+  return {ids:[...new Set(ids)],scope,retrySeconds:Math.max(5,retrySeconds||20)};
+}
+
+function quotaError(data, fallback){
+  const info=quotaInfo(data);
+  const err=new Error(data?.error?.message||fallback);
+  err.status=429;
+  err.retryAfter=info.retrySeconds;
+  err.quotaScope=info.scope;
+  err.quotaIds=info.ids;
+  return err;
+}
+
 function normalizeReview(raw, categories, evidence){
   if (!raw || raw.approved !== true) return null;
   const type=['mcq','truefalse','numeric','free','buzzer','intruder','estimation','progressive'].includes(raw.type)?raw.type:null;
@@ -44,7 +80,7 @@ function normalizeReview(raw, categories, evidence){
   const topicKey=clean(raw.topic_key,140);
   const quality=Math.max(0,Math.min(100,Number(raw.quality_score)||0));
   if(!type||!categories.includes(category)||question.length<10||!topicKey||!explanation||pct<8||quality<76) return null;
-  const base={id:clean(raw.id,120),approved:true,category,type,question,difficulty:difficultyFromPct(pct),expected_success_pct:pct,explanation,topic_key:topicKey,quality_score:quality,accepted_answers:Array.isArray(raw.accepted_answers)?raw.accepted_answers.map(x=>clean(x,100)).filter(Boolean).slice(0,8):[],clues:Array.isArray(raw.clues)?raw.clues.map(x=>clean(x,180)).filter(Boolean).slice(0,5):[],source_evidence:evidence.sources,verification_evidence:{queries:evidence.queries,grounded:true}};
+  const base={id:clean(raw.id,120),approved:true,category,type,question,difficulty:difficultyFromPct(pct),expected_success_pct:pct,explanation,topic_key:topicKey,quality_score:quality,accepted_answers:Array.isArray(raw.accepted_answers)?raw.accepted_answers.map(x=>clean(x,100)).filter(Boolean).slice(0,8):[],clues:Array.isArray(raw.clues)?raw.clues.map(x=>clean(x,180)).filter(Boolean).slice(0,5):[],source_evidence:evidence.sources,verification_evidence:{queries:evidence.queries,grounded:true,ground_model:GROUND_MODEL,review_model:REVIEW_MODEL}};
 
   if(type==='mcq'||type==='intruder'){
     const options=Array.isArray(raw.options)?raw.options.map(x=>clean(x,70)).filter(Boolean).slice(0,4):[];
@@ -79,10 +115,13 @@ async function groundedFactCheck(blind){
     'Réponds en texte structuré par ID avec : verdict, réponse indépendante, justification factuelle. Les citations Google Search sont indispensables.',
     `QUESTIONS : ${JSON.stringify(blind)}`
   ].join('\n\n');
-  const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`;
+  const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GROUND_MODEL)}:generateContent`;
   const r=await fetch(endpoint,{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],tools:[{google_search:{}}],generationConfig:{temperature:0,maxOutputTokens:12000}})});
   const data=await r.json().catch(()=>({}));
-  if(!r.ok){const err=new Error(data?.error?.message||'Fact-check Google Search impossible');err.status=r.status;throw err;}
+  if(!r.ok){
+    if(r.status===429) throw quotaError(data,'Fact-check Google Search limité par le quota');
+    const err=new Error(data?.error?.message||'Fact-check Google Search impossible');err.status=r.status;throw err;
+  }
   const evidence=extractGrounding(data);
   if(!evidence.text||!evidence.sources.length){const err=new Error('Le fact-check n’a renvoyé aucune source exploitable.');err.status=502;throw err;}
   return evidence;
@@ -100,7 +139,7 @@ module.exports=async function handler(req,res){
   if(!questions.length||!categories.length) return res.status(400).json({error:'Questions ou catégories manquantes'});
 
   const blind=questions.map(q=>({id:clean(q.id,120),category:clean(q.category,60),type:clean(q.type,30),question:clean(q.question,150),options:Array.isArray(q.options)?q.options.map(x=>clean(x,70)).slice(0,4):[],unit:clean(q.unit,40),clues:Array.isArray(q.clues)?q.clues.map(x=>clean(x,180)).slice(0,6):[]}));
-  const schema={type:'object',required:['reviews'],properties:{reviews:{type:'array',items:{type:'object',required:['id','approved','category','type','question','options','answer','unit','accepted_answers','explanation','topic_key','clues','expected_success_pct','quality_score'],properties:{id:{type:'string'},approved:{type:'boolean'},category:{type:'string'},type:{type:'string',enum:['mcq','truefalse','numeric','free','buzzer','intruder','estimation','progressive']},question:{type:'string'},options:{type:'array',items:{type:'string'}},answer:{type:'string'},unit:{type:'string'},accepted_answers:{type:'array',items:{type:'string'}},explanation:{type:'string'},topic_key:{type:'string'},clues:{type:'array',items:{type:'string'}},expected_success_pct:{type:'number'},quality_score:{type:'integer'}}}}}};
+  const schema={type:'object',required:['reviews'],properties:{reviews:{type:'array',items:{type:'object',required:['id','approved','category','type','question','options','answer','unit','accepted_answers','explanation','topic_key','clues','expected_success_pct','quality_score'],properties:{id:{type:'string'},approved:{type:'boolean'},category:{type:'string'},type:{type:'string',enum:['mcq','truefalse','numeric','free','buzzer','intruder','estimation','progressive']},question:{type:'string'},options:{type:'array','items:{type:'string'}},answer:{type:'string'},unit:{type:'string'},accepted_answers:{type:'array','items:{type:'string'}},explanation:{type:'string'},topic_key:{type:'string'},clues:{type:'array','items:{type:'string'}},expected_success_pct:{type:'number'},quality_score:{type:'integer'}}}}}};
 
   try{
     const evidence=await groundedFactCheck(blind);
@@ -121,13 +160,24 @@ module.exports=async function handler(req,res){
       `QUESTIONS À FINALISER : ${JSON.stringify(blind)}`
     ].join('\n\n');
 
-    const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`;
+    const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(REVIEW_MODEL)}:generateContent`;
     const r=await fetch(endpoint,{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0.01,topP:0.35,maxOutputTokens:18000,responseMimeType:'application/json',responseSchema:schema}})});
     const data=await r.json().catch(()=>({}));
-    if(!r.ok) return res.status(r.status===429?429:502).json({error:data?.error?.message||'Vérification Gemini impossible'});
+    if(!r.ok){
+      if(r.status===429) throw quotaError(data,'Vérification finale Gemini limitée par le quota');
+      return res.status(502).json({error:data?.error?.message||'Vérification Gemini impossible'});
+    }
     const text=outputText(data); if(!text) return res.status(502).json({error:'Réponse vide du vérificateur'});
     const parsed=JSON.parse(text);
     const approved=(parsed.reviews||[]).map(x=>normalizeReview(x,categories,evidence)).filter(Boolean);
-    res.status(200).json({questions:approved,reviewedCount:questions.length,approvedCount:approved.length,model:MODEL,qualityControl:'grounded-blind-factory-review-v2',groundedSources:evidence.sources.length,searchQueries:evidence.queries.length});
-  }catch(e){console.error(e);res.status(e.status===429?429:502).json({error:e.message||'Erreur du contrôleur de la fabrique'});}
+    res.status(200).json({questions:approved,reviewedCount:questions.length,approvedCount:approved.length,models:{grounding:GROUND_MODEL,reviewer:REVIEW_MODEL},qualityControl:'grounded-blind-factory-review-v3',groundedSources:evidence.sources.length,searchQueries:evidence.queries.length});
+  }catch(e){
+    console.error(e);
+    if(e.status===429){
+      const retryAfter=Math.max(5,Number(e.retryAfter)||20);
+      res.setHeader('Retry-After',String(retryAfter));
+      return res.status(429).json({error:e.message||'Quota Gemini atteint',retry_after_seconds:retryAfter,quota_scope:e.quotaScope||'unknown',quota_ids:e.quotaIds||[]});
+    }
+    res.status(502).json({error:e.message||'Erreur du contrôleur de la fabrique'});
+  }
 };
