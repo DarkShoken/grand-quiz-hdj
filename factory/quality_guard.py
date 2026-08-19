@@ -70,7 +70,7 @@ def _qid(question):
     return str(question.get("id") or "?")
 
 
-def _short(value, limit=260):
+def _short(value, limit=300):
     text = re.sub(r"\s+", " ", str(value or "")).strip()
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
@@ -110,19 +110,30 @@ def adversarial_review(question, evidence, ollama_url, model, session):
     }
 
     prompt = """Tu es le CONTRÔLEUR ADVERSARIAL final d'un quiz français pour adultes.
-La réponse validée par le rédacteur t'est volontairement cachée. Tu ne dois PAS réparer la question : tu dois essayer de la faire échouer.
+La réponse validée par le rédacteur t'est volontairement cachée. Tu ne dois PAS réparer la question : tu dois la résoudre indépendamment et chercher de vraies ambiguïtés.
 
-Utilise uniquement le dossier factuel fourni et lis la question au sens littéral.
-approved=true seulement si la question est précise, naturelle, non anachronique, stable, et possède une seule réponse défendable.
+Utilise uniquement le dossier factuel fourni et lis LA QUESTION AU SENS LITTÉRAL.
+approved=true seulement si la question est précise, naturelle, non anachronique, stable, et possède une seule réponse correcte démontrée par le dossier.
+
+IMPORTANT — NE CONFONDS PAS PLAUSIBILITÉ ET AMBIGUÏTÉ :
+- Un distracteur peut être plausible, ressembler à une erreur fréquente, être une autre date réelle ou appartenir au même domaine : cela est NORMAL dans un quiz et ne rend PAS la question ambiguë.
+- Une option est « satisfaisante » seulement si elle répond réellement et littéralement à la question posée.
+- N'invente jamais une autre interprétation non demandée (par exemple date de production si la question demande date de diffusion).
+- Rejette pour ambiguïté uniquement si AU MOINS DEUX réponses satisfont réellement le libellé exact, ou si le libellé ne permet pas de savoir ce qui est demandé.
 
 RÈGLES STRICTES :
-- QCM/intrus : examine CHAQUE option séparément. Mets dans defensible_options toutes les options défendables selon le libellé exact. Il doit y en avoir exactement une.
-- Intrus : le libellé doit demander réellement quel élément ne partage pas une propriété commune claire. Sinon approved=false.
-- Numérique/estimation : une seule valeur exacte et stable doit découler du dossier.
+- QCM : examine CHAQUE option. Mets dans satisfying_options uniquement les options qui répondent effectivement à la question. Il doit y en avoir exactement une.
+- Intrus : satisfying_options contient uniquement l'élément qui NE partage PAS la propriété commune demandée. Il doit y en avoir exactement un.
+- Numérique/estimation : donne la valeur qui répond exactement au libellé. Une date ou statistique mouvante doit avoir une période de référence claire ; sinon approved=false.
 - Libre/buzzer/progressive : une réponse courte unique doit être démontrée.
-- Rejette les formulations trop larges dans le temps, les catégories vagues, les anachronismes et toute question dont une autre interprétation raisonnable change la réponse.
+- Rejette les formulations réellement trop larges dans le temps, les catégories vagues, les anachronismes et les contradictions du dossier.
 - Ne te fie pas au nombre de sources : vérifie ce que le dossier affirme réellement.
-- independent_answer = ta réponse indépendante, sans voir celle du rédacteur.
+- independent_answer = ta réponse indépendante à la question exacte.
+- reason doit expliquer brièvement pourquoi la question est acceptée ou rejetée. Il doit être cohérent avec satisfying_options.
+
+Pour QCM/intrus :
+- si satisfying_options contient exactement une option correcte et que le reste est faux pour LE LIBELLÉ POSÉ, approved peut être true ;
+- ne mets jamais les quatre options dans satisfying_options simplement parce qu'elles sont toutes « plausibles » ou « défendables » dans l'absolu.
 
 Retourne uniquement un JSON conforme au schéma.
 DOSSIER FACTUEL :
@@ -131,11 +142,11 @@ DOSSIER FACTUEL :
     schema = {
         "type": "object",
         "additionalProperties": False,
-        "required": ["approved", "independent_answer", "defensible_options", "reason"],
+        "required": ["approved", "independent_answer", "satisfying_options", "reason"],
         "properties": {
             "approved": {"type": "boolean"},
             "independent_answer": {"type": "string"},
-            "defensible_options": {"type": "array", "items": {"type": "string"}},
+            "satisfying_options": {"type": "array", "items": {"type": "string"}},
             "reason": {"type": "string"},
         },
     }
@@ -145,7 +156,7 @@ DOSSIER FACTUEL :
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "format": schema,
-        "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 500},
+        "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 550},
         "keep_alive": 0,
     }
 
@@ -160,31 +171,33 @@ DOSSIER FACTUEL :
 
     reason = _short(raw.get("reason"))
     independent = _short(raw.get("independent_answer"))
-    defensible = [str(x).strip() for x in raw.get("defensible_options") or [] if str(x).strip()]
+    satisfying = [str(x).strip() for x in raw.get("satisfying_options") or [] if str(x).strip()]
+
+    # Une sortie structurée auto-contradictoire est rejetée : on ne devine pas à la place du contrôleur.
+    if qtype in {"mcq", "intruder"} and raw.get("approved") is True and len(satisfying) != 1:
+        return _reject(
+            question,
+            "sortie_controleur_incoherente",
+            f"approved=true mais options_satisfaisantes={len(satisfying)} · {satisfying} · raison={reason}",
+        )
 
     if raw.get("approved") is not True:
         return _reject(
             question,
             "controleur_refuse",
-            f"raison={reason or 'non précisée'} · réponse_indépendante={independent or 'vide'} · options_défendables={defensible}",
+            f"raison={reason or 'non précisée'} · réponse_indépendante={independent or 'vide'} · options_satisfaisantes={satisfying}",
         )
 
     if qtype in {"mcq", "intruder"}:
-        if len(defensible) != 1:
-            return _reject(
-                question,
-                "nombre_options_defendables",
-                f"attendu=1 · obtenu={len(defensible)} · {defensible} · raison={reason}",
-            )
         expected = str(question.get("answer") or "").strip()
-        if _norm(defensible[0]) != _norm(expected):
+        if _norm(satisfying[0]) != _norm(expected):
             return _reject(
                 question,
                 "reponse_independante_differe",
-                f"rédacteur={expected!r} · contrôleur={defensible[0]!r} · raison={reason}",
+                f"rédacteur={expected!r} · contrôleur={satisfying[0]!r} · raison={reason}",
             )
         print(
-            f"  Quality gate détail [{_qid(question)}] : OK · option unique={defensible[0]!r} · domaines={len(usable_hosts)}",
+            f"  Quality gate détail [{_qid(question)}] : OK · option satisfaisante={satisfying[0]!r} · domaines={len(usable_hosts)}",
             flush=True,
         )
         return True
