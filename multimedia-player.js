@@ -7,7 +7,7 @@
 
   function enrich(payload) {
     const source = bank.get(payload?.question?.id);
-    if (source && payload.question) payload.question = { ...payload.question, format: source.format, media: source.media, clues: source.clues };
+    if (source && payload.question) payload.question = { ...payload.question, format: source.format, media: source.media, clues: source.clues, originalType: source.originalType || source.type };
     return payload;
   }
 
@@ -29,12 +29,7 @@
     });
   };
 
-  function queuePatch() {
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(patch);
-  }
-
+  function queuePatch() { if (queued) return; queued = true; requestAnimationFrame(patch); }
   function patch() {
     queued = false;
     const q = latest?.question;
@@ -45,7 +40,9 @@
     hint.textContent = q.format === 'audio'
       ? '🎧 Écoute l’extrait sur l’écran TV puis réponds ici.'
       : q.format === 'image'
-        ? '🖼️ Regarde l’image mystère sur l’écran TV.'
+        ? q.originalType === 'location'
+          ? '📍 Regarde l’image sur la TV et retrouve le lieu demandé.'
+          : '🖼️ Regarde l’image mystère sur l’écran TV.'
         : '🧩 Les indices apparaissent progressivement sur l’écran TV. Buzze dès que tu sais.';
     card.querySelector('.mobile-question-text')?.after(hint);
   }
