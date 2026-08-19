@@ -29,10 +29,11 @@ cp "$SCRIPT_DIR/quiz_factory_v2.py" "$INSTALL_DIR/quiz_factory.py"
 
 # Consolidation V3 : on corrige le script installé en un seul passage Python.
 # - BATCH_SIZE=1 est réellement respecté
-# - Compound Mini fait obligatoirement un web_search, 1500 tokens max
+# - Compound Mini ne dispose que de web_search et le prompt exige une recherche réelle
 # - parsing robuste de search_results.results + repli sur les URLs de sortie
 # - aucun dossier Groq sans source n'est accepté : repli Wikipédia automatique
 # - GPT-OSS 120B sort du chemin bloquant : Gemma local juge le dossier Groq
+# - les erreurs HTTP Groq affichent maintenant leur corps exact
 # - un 429 affiche les compteurs/réinitialisations utiles
 # - Qwen fonctionne sans thinking et avec un budget suffisant pour terminer son JSON
 # - les générations locales restent bornées pour éviter les dérives de plusieurs minutes
@@ -54,7 +55,11 @@ replacements = [
     ),
     (
         "'compound_custom': {'tools': {'enabled_tools': ['web_search','visit_website']}},",
-        "'compound_custom': {'tools': {'enabled_tools': ['web_search']}},\n        'tool_choice': 'required',\n        'citation_options': 'enabled',"
+        "'compound_custom': {'tools': {'enabled_tools': ['web_search']}},\n        'search_settings': {'country': 'france'},"
+    ),
+    (
+        "Les réponses de l'auteur sont volontairement cachées. Recherche sur le Web pour résoudre chaque question indépendamment.",
+        "Les réponses de l'auteur sont volontairement cachées. Tu DOIS effectuer une vraie recherche Web avec l'outil web_search avant de répondre ; n'utilise pas seulement ta mémoire. Résous ensuite chaque question indépendamment."
     ),
     (
         "'max_completion_tokens': 12000,",
@@ -143,6 +148,29 @@ new_cooldown = '''def mark_groq_cooldown(response=None):
 if old_cooldown not in text:
     raise SystemExit('Fonction mark_groq_cooldown introuvable')
 text = text.replace(old_cooldown, new_cooldown, 1)
+
+old_http = """    r = session.post('https://api.groq.com/openai/v1/chat/completions', headers=groq_headers(), json=payload, timeout=180)
+    if r.status_code == 429:
+        mark_groq_cooldown(r)
+        raise RuntimeError('groq_quota')
+    r.raise_for_status()
+    data = r.json()
+"""
+new_http = """    r = session.post('https://api.groq.com/openai/v1/chat/completions', headers=groq_headers(), json=payload, timeout=180)
+    if r.status_code == 429:
+        mark_groq_cooldown(r)
+        raise RuntimeError('groq_quota')
+    if r.status_code >= 400:
+        try:
+            detail = json.dumps(r.json(), ensure_ascii=False)[:1200]
+        except Exception:
+            detail = (r.text or '')[:1200]
+        raise RuntimeError(f'Groq HTTP {r.status_code}: {detail}')
+    data = r.json()
+"""
+if old_http not in text:
+    raise SystemExit('Bloc HTTP Groq research introuvable')
+text = text.replace(old_http, new_http, 1)
 
 old_sources = '''    sources = []
     for tool in msg.get('executed_tools') or []:
@@ -275,11 +303,12 @@ systemctl daemon-reload
 echo
 echo "Installation / mise à jour V3 terminée."
 echo "Auteur : Qwen3 4B local · think=false · num_predict=1200"
-echo "Recherche factuelle : Groq Compound Mini · web_search OBLIGATOIRE · 1500 tokens max"
+echo "Recherche factuelle : Groq Compound Mini · web_search explicitement demandé · 1500 tokens max"
 echo "Validation finale : Gemma 3 4B local · num_predict=1400"
 echo "Vision locale : Gemma 3 4B · num_predict=400"
 echo "Secours sans source Groq : Wikipédia + Gemma 3 local"
 echo "BATCH_SIZE réellement appliqué : 1"
+echo "Les erreurs HTTP Groq affichent désormais le corps exact de la réponse."
 echo "Les erreurs JSON Qwen indiquent done_reason et longueur de sortie."
 echo "Les 429 affichent leur cause et les compteurs Groq."
 echo "Les clés FACTORY_TOKEN et GROQ_API_KEY existantes sont conservées."
