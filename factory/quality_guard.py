@@ -11,16 +11,19 @@ SOCIAL_HOSTS = {
     "pinterest.com", "www.pinterest.com",
 }
 
+
 def _norm(value):
     text = unicodedata.normalize("NFD", str(value or ""))
     text = text.encode("ascii", "ignore").decode().lower().replace("œ", "oe")
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
 
 def _host(url):
     try:
         return (urlparse(str(url or "")).hostname or "").lower()
     except Exception:
         return ""
+
 
 def _usable_hosts(evidence):
     hosts = set()
@@ -32,6 +35,7 @@ def _usable_hosts(evidence):
             hosts.add(host)
     return hosts
 
+
 def _intruder_stem_ok(question):
     q = _norm(question)
     markers = (
@@ -40,6 +44,7 @@ def _intruder_stem_ok(question):
         "lequel ne", "laquelle ne", "quel ne", "quelle ne",
     )
     return any(marker in q for marker in markers)
+
 
 def _answers_match(qtype, independent, question):
     expected = str(question.get("answer") or "").strip()
@@ -60,6 +65,22 @@ def _answers_match(qtype, independent, question):
     ni = _norm(independent)
     return bool(ni) and any(ni == _norm(x) for x in accepted if _norm(x))
 
+
+def _qid(question):
+    return str(question.get("id") or "?")
+
+
+def _short(value, limit=260):
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def _reject(question, code, detail=""):
+    suffix = f" · {_short(detail)}" if detail else ""
+    print(f"  Quality gate détail [{_qid(question)}] : REJET {code}{suffix}", flush=True)
+    return False
+
+
 def adversarial_review(question, evidence, ollama_url, model, session):
     """Return True only if an independent adversarial pass confirms the final item."""
     qtype = str(question.get("type") or "")
@@ -67,12 +88,16 @@ def adversarial_review(question, evidence, ollama_url, model, session):
 
     # Text questions need at least two independent non-social domains.
     # Visual questions are handled by the dedicated Wikimedia+vision path.
-    if not provider.startswith("gemma3-vision"):
-        if len(_usable_hosts(evidence)) < 2:
-            return False
+    usable_hosts = _usable_hosts(evidence)
+    if not provider.startswith("gemma3-vision") and len(usable_hosts) < 2:
+        return _reject(
+            question,
+            "sources_insuffisantes",
+            f"domaines fiables={len(usable_hosts)} ({', '.join(sorted(usable_hosts)) or 'aucun'})",
+        )
 
     if qtype == "intruder" and not _intruder_stem_ok(question.get("question")):
-        return False
+        return _reject(question, "intrus_libelle_incoherent", question.get("question"))
 
     blind = {
         "category": question.get("category"),
@@ -128,18 +153,51 @@ DOSSIER FACTUEL :
         response = session.post(f"{ollama_url}/api/chat", json=payload, timeout=900)
         response.raise_for_status()
         reply = response.json()
-        raw = json.loads(reply.get("message", {}).get("content", ""))
-    except Exception:
-        return False
+        content = reply.get("message", {}).get("content", "")
+        raw = json.loads(content)
+    except Exception as exc:
+        return _reject(question, "erreur_controleur", f"{type(exc).__name__}: {exc}")
+
+    reason = _short(raw.get("reason"))
+    independent = _short(raw.get("independent_answer"))
+    defensible = [str(x).strip() for x in raw.get("defensible_options") or [] if str(x).strip()]
 
     if raw.get("approved") is not True:
-        return False
+        return _reject(
+            question,
+            "controleur_refuse",
+            f"raison={reason or 'non précisée'} · réponse_indépendante={independent or 'vide'} · options_défendables={defensible}",
+        )
 
     if qtype in {"mcq", "intruder"}:
-        defensible = [str(x).strip() for x in raw.get("defensible_options") or [] if str(x).strip()]
         if len(defensible) != 1:
-            return False
+            return _reject(
+                question,
+                "nombre_options_defendables",
+                f"attendu=1 · obtenu={len(defensible)} · {defensible} · raison={reason}",
+            )
         expected = str(question.get("answer") or "").strip()
-        return _norm(defensible[0]) == _norm(expected)
+        if _norm(defensible[0]) != _norm(expected):
+            return _reject(
+                question,
+                "reponse_independante_differe",
+                f"rédacteur={expected!r} · contrôleur={defensible[0]!r} · raison={reason}",
+            )
+        print(
+            f"  Quality gate détail [{_qid(question)}] : OK · option unique={defensible[0]!r} · domaines={len(usable_hosts)}",
+            flush=True,
+        )
+        return True
 
-    return _answers_match(qtype, raw.get("independent_answer"), question)
+    if not _answers_match(qtype, raw.get("independent_answer"), question):
+        return _reject(
+            question,
+            "reponse_independante_differe",
+            f"rédacteur={question.get('answer')!r} · contrôleur={independent!r} · raison={reason}",
+        )
+
+    print(
+        f"  Quality gate détail [{_qid(question)}] : OK · réponse={independent!r} · domaines={len(usable_hosts)}",
+        flush=True,
+    )
+    return True
