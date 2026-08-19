@@ -7,6 +7,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_RESEARCH_MODEL = os.getenv("GEMINI_RESEARCH_MODEL", "gemini-2.5-flash-lite").strip()
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 SEARXNG_URL = os.getenv("SEARXNG_URL", "").strip().rstrip("/")
+MIN_SOURCE_DOMAINS = max(1, int(os.getenv("MIN_SOURCE_DOMAINS", "2")))
 
 
 class ResearchUnavailable(RuntimeError):
@@ -289,6 +290,10 @@ def research_web(blind, session):
             evidence = provider(blind, session)
             hosts = {_host(s.get("url")) for s in evidence.get("sources") or []}
             hosts.discard("")
+            if len(hosts) < MIN_SOURCE_DOMAINS:
+                raise ResearchUnavailable(
+                    f"seulement {len(hosts)} domaine(s) distinct(s), minimum={MIN_SOURCE_DOMAINS}"
+                )
             print(
                 f"  Recherche Web : {evidence['provider']} · "
                 f"{len(evidence.get('sources') or [])} sources · {len(hosts)} domaines",
