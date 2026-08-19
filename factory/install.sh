@@ -37,9 +37,18 @@ text = path.read_text(encoding='utf-8')
 
 def replace_once(old, new, label):
     global text
-    if old not in text:
-        raise SystemExit(f'Bloc introuvable: {label}')
-    text = text.replace(old, new, 1)
+    if old in text:
+        text = text.replace(old, new, 1)
+        return
+    # local_finalize a été le point fragile des versions précédentes :
+    # si le bloc exact diffère légèrement, on remplace proprement toute la fonction.
+    if label == 'local_finalize V3':
+        start = text.find('def local_finalize(')
+        end = text.find('\ndef review_text(', start)
+        if start >= 0 and end > start:
+            text = text[:start] + new.rstrip() + '\n' + text[end + 1:]
+            return
+    raise SystemExit(f'Bloc introuvable: {label}')
 
 # Réglages de base et compatibilité des catégories/types.
 replace_once(
@@ -115,7 +124,7 @@ replace_once(
 )
 replace_once(
     "'compound_custom': {'tools': {'enabled_tools': ['web_search','visit_website']}},",
-    "'compound_custom': {'tools': {'enabled_tools': ['web_search']}},\n        'search_settings': {'country': 'france'},",
+    "'compound_custom': {'tools': {'enabled_tools': ['web_search'])},\n        'search_settings': {'country': 'france'},",
     'outils Groq'
 )
 replace_once(
