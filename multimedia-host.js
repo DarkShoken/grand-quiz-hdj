@@ -1,15 +1,24 @@
 (() => {
   const G = window.GrandQuiz;
   if (!G?.createTransport) return;
-  const bank = new Map((window.GRAND_QUIZ_MEDIA_LIBRARY || []).map((q) => [q.id, q]));
   let latest = null;
   let hostTransport = null;
   let queued = false;
 
+  function mediaSource(id) {
+    return (window.GRAND_QUIZ_MEDIA_LIBRARY || []).find((q) => q?.id === id) || null;
+  }
+
   function enrichState(payload) {
-    const source = bank.get(payload?.question?.id);
+    const source = mediaSource(payload?.question?.id);
     if (source && payload.question) {
-      payload.question = { ...payload.question, format: source.format, media: source.media, clues: source.clues };
+      payload.question = {
+        ...payload.question,
+        format: source.format,
+        media: source.media,
+        clues: source.clues,
+        originalType: source.originalType || source.type,
+      };
     }
     return payload;
   }
@@ -30,8 +39,9 @@
     return transport;
   };
 
-  function formatLabel(format) {
-    return ({ audio: '🎧 QUESTION AUDIO', image: '🖼️ IMAGE MYSTÈRE', clues: '🧩 INDICES PROGRESSIFS' })[format] || '';
+  function formatLabel(question) {
+    if (question?.originalType === 'location') return '📍 OÙ SOMMES-NOUS ?';
+    return ({ audio: '🎧 QUESTION AUDIO', image: '🖼️ IMAGE MYSTÈRE', clues: '🧩 INDICES PROGRESSIFS' })[question?.format] || '';
   }
 
   function queuePatch() {
@@ -45,10 +55,11 @@
     const stage = document.getElementById('hostStage');
     const q = latest?.question;
     if (!stage || !q?.format || !['question', 'reveal'].includes(latest.phase)) return;
-    if (!stage.querySelector('.multimedia-host-badge')) {
+    const label = formatLabel(q);
+    if (label && !stage.querySelector('.multimedia-host-badge')) {
       const badge = document.createElement('div');
       badge.className = 'multimedia-host-badge';
-      badge.textContent = formatLabel(q.format);
+      badge.textContent = label;
       stage.prepend(badge);
     }
     if (q.format === 'audio' && latest.phase === 'question' && !stage.querySelector('#hostMediaPlay')) {
