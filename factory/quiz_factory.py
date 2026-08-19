@@ -12,6 +12,8 @@ OLLAMA_URL=os.getenv('OLLAMA_URL','http://127.0.0.1:11434').rstrip('/')
 OLLAMA_MODEL=os.getenv('OLLAMA_MODEL','qwen3:4b-instruct-2507-q4_K_M')
 BATCH_SIZE=max(2,min(10,int(os.getenv('BATCH_SIZE','6'))))
 SLEEP_SECONDS=max(5,int(os.getenv('SLEEP_SECONDS','30')))
+REVIEW_RETRIES=max(1,min(8,int(os.getenv('REVIEW_RETRIES','5'))))
+QUOTA_MAX_WAIT=max(30,min(3600,int(os.getenv('QUOTA_MAX_WAIT','300'))))
 TARGETS={'Facile':int(os.getenv('TARGET_EASY','100')),'Moyen':int(os.getenv('TARGET_MEDIUM','120')),'Difficile':int(os.getenv('TARGET_HARD','80'))}
 
 CATEGORIES=[
@@ -34,7 +36,7 @@ CATEGORY_RULES={
 }
 
 session=requests.Session()
-session.headers.update({'User-Agent':'GrandQuizHDJ-Factory/1.0'})
+session.headers.update({'User-Agent':'GrandQuizHDJ-Factory/1.1'})
 
 def norm(v):
     import unicodedata
@@ -103,7 +105,7 @@ def generate_qwen(category,difficulty,qtype,count,topics):
       'estimation':'ESTIMATION : valeur de référence exacte et stable, intéressante à estimer.',
       'free':'RÉPONSE LIBRE : réponse courte, unique ; accepted_answers uniquement variantes strictement équivalentes.',
       'buzzer':'BUZZER : question orale courte avec réponse unique et reconnaissable.',
-      'progressive':'INDICES PROGRESSIFS : 4 indices vrais du plus difficile au plus évident, sans jamais écrire la réponse.',
+      'progressive':'INDICES PROGRESSIFS : exactement 4 ou 5 indices vrais, du plus difficile au plus évident. Le premier est indirect et exigeant ; aucun indice ne contient la réponse, ne paraphrase la question ni ne répète un autre indice.',
       'image_mystery':'IMAGE MYSTÈRE : choisir un sujet visuellement identifiable sur Wikimedia Commons ; media_search doit être précis en anglais si utile.',
       'location':'OÙ SOMMES-NOUS : lieu/monument très identifiable visuellement ; réponse attendue au niveau ville ou lieu explicitement demandé.'
     }[qtype]
@@ -125,9 +127,35 @@ Sujets déjà présents à éviter : {json.dumps(topics[-180:],ensure_ascii=Fals
         result.append(q)
     return result[:count]
 
+def quota_wait(response,attempt):
+    data={}
+    try:data=response.json()
+    except Exception:pass
+    raw=data.get('retry_after_seconds') or response.headers.get('Retry-After') or 0
+    try:delay=int(float(raw))
+    except Exception:delay=0
+    scope=str(data.get('quota_scope') or 'unknown')
+    if not delay:delay=min(QUOTA_MAX_WAIT,20*(2**attempt)+random.randint(1,7))
+    if scope=='day':delay=max(delay,min(QUOTA_MAX_WAIT,300))
+    return min(QUOTA_MAX_WAIT,max(5,delay)),scope
+
+def post_review(path,payload,timeout=180,label='Gemini'):
+    url=f'{QUIZ_BASE_URL}{path}'
+    last=None
+    for attempt in range(REVIEW_RETRIES):
+        r=session.post(url,json=payload,timeout=timeout);last=r
+        if r.status_code!=429:
+            r.raise_for_status();return r.json()
+        delay,scope=quota_wait(r,attempt)
+        suffix='quota quotidien' if scope=='day' else 'quota temporaire'
+        print(f'  ⏳ {label}: {suffix}, nouvelle tentative dans {delay}s ({attempt+1}/{REVIEW_RETRIES})',flush=True)
+        time.sleep(delay)
+    if last is not None:last.raise_for_status()
+    raise RuntimeError(f'{label}: quota indisponible après {REVIEW_RETRIES} tentatives')
+
 def review_text(category,candidates):
-    r=session.post(f'{QUIZ_BASE_URL}/api/factory-review',json={'categories':[category],'questions':candidates},timeout=180)
-    r.raise_for_status();return r.json().get('questions',[])
+    data=post_review('/api/factory-review',{'categories':[category],'questions':candidates},timeout=180,label='Vérification factuelle')
+    return data.get('questions',[])
 
 def commons_image(search_term):
     params={'action':'query','format':'json','generator':'search','gsrsearch':search_term,'gsrnamespace':'6','gsrlimit':'10','prop':'imageinfo','iiprop':'url|mime|extmetadata','iiurlwidth':'900'}
@@ -150,7 +178,7 @@ def review_media(candidate):
     media=commons_image(candidate.get('media_search') or candidate.get('answer') or candidate.get('question'))
     if not media:return None
     q={**candidate,'media':media,'source_evidence':[{'source':'Wikimedia Commons','url':media.get('page',''),'license':media.get('license',''),'artist':media.get('artist','')} ]}
-    r=session.post(f'{QUIZ_BASE_URL}/api/factory-review-media',json={'question':q},timeout=180);r.raise_for_status();data=r.json()
+    data=post_review('/api/factory-review-media',{'question':q},timeout=180,label='Vérification image')
     return data.get('question') if data.get('approved') else None
 
 def question_key(q):
@@ -168,7 +196,7 @@ def db_row(q,author_candidate=None):
         except Exception:return None
         answer={'value':value,'unit':q.get('unit','')}
     else:answer={'text':ans}
-    return {'question_key':question_key(q),'category':q['category'],'difficulty':q['difficulty'],'expected_success_pct':q.get('expected_success_pct'),'type':t,'question':q['question'],'options':options,'answer':answer,'accepted_answers':q.get('accepted_answers') or [],'explanation':q.get('explanation',''),'topic_key':q.get('topic_key',''),'clues':q.get('clues') or [],'media':q.get('media') or {},'source_evidence':q.get('source_evidence') or [],'author_model':OLLAMA_MODEL,'verifier_model':'gemini','quality_score':q.get('quality_score',80),'verification':{'pipeline':'qwen-local+gemini-blind','verified_at':datetime.now(timezone.utc).isoformat()}}
+    return {'question_key':question_key(q),'category':q['category'],'difficulty':q['difficulty'],'expected_success_pct':q.get('expected_success_pct'),'type':t,'question':q['question'],'options':options,'answer':answer,'accepted_answers':q.get('accepted_answers') or [],'explanation':q.get('explanation',''),'topic_key':q.get('topic_key',''),'clues':q.get('clues') or [],'media':q.get('media') or {},'source_evidence':q.get('source_evidence') or [],'author_model':OLLAMA_MODEL,'verifier_model':'gemini-2.5-flash+gemini-3.1-flash-lite','quality_score':q.get('quality_score',80),'verification':{'pipeline':'qwen-local+gemini-grounded+gemini-final','verified_at':datetime.now(timezone.utc).isoformat(),'evidence':q.get('verification_evidence') or {}}}
 
 def ingest(rows):
     rows=[x for x in rows if x]
