@@ -22,6 +22,27 @@
       .sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name), 'fr'));
   }
 
+  function scoreGroups(players) {
+    const groups = [];
+    for (const player of players) {
+      let group = groups[groups.length - 1];
+      if (!group || group.score !== player.score) {
+        group = { rank: groups.length + 1, score: player.score, players: [] };
+        groups.push(group);
+      }
+      group.players.push(player);
+    }
+    return groups;
+  }
+
+  function rankedPlayers(players) {
+    return scoreGroups(players).flatMap((group) => group.players.map((player) => ({
+      ...player,
+      denseRank: group.rank,
+      tied: group.players.length > 1,
+    })));
+  }
+
   function schedulePatch() {
     if (patchQueued) return;
     patchQueued = true;
@@ -37,16 +58,30 @@
     const card = stage?.querySelector('.ranking-card');
     if (!card || card.querySelector('.final-complete-ranking')) return;
 
-    const players = individualRanking();
+    const rawPlayers = individualRanking();
+    const groups = scoreGroups(rawPlayers);
+    const players = rankedPlayers(rawPlayers);
     const medals = ['🥇', '🥈', '🥉'];
+    const lastGroup = groups.length >= 2 ? groups[groups.length - 1] : null;
+    const penultimateGroup = groups.length >= 4 ? groups[groups.length - 2] : null;
     const title = latestState.mode === 'teams' ? 'Scores individuels' : 'Tous les scores';
+
     const rows = players.length
-      ? players.map((player, index) => {
-          const topClass = index < 3 ? ` top-${index + 1}` : '';
+      ? players.map((player) => {
+          const topClass = player.denseRank <= 3 ? ` top-${player.denseRank}` : '';
+          const isLantern = Boolean(lastGroup && player.score === lastGroup.score && player.denseRank > 3);
+          const isChocolate = Boolean(penultimateGroup && player.score === penultimateGroup.score && player.denseRank > 3);
+          const specialClass = isLantern ? ' special-lantern' : isChocolate ? ' special-chocolate' : '';
+          const special = isLantern
+            ? '<span class="final-special-award">🏮 Lanterne rouge</span>'
+            : isChocolate
+              ? '<span class="final-special-award">🍫 Médaille en chocolat</span>'
+              : '';
+          const tie = player.tied ? '<span class="final-tie-label">ex æquo</span>' : '';
           const team = latestState.mode === 'teams'
             ? `<span class="final-player-team">${G.escapeHtml(teamDisplayName(player.team))}</span>`
             : '';
-          return `<div class="final-score-row${topClass}"><div class="final-rank-position">${medals[index] || index + 1}</div><div class="final-rank-player"><strong>${G.escapeHtml(player.name)}</strong>${team}</div><div class="final-rank-points">${player.score} pts</div></div>`;
+          return `<div class="final-score-row${topClass}${specialClass}"><div class="final-rank-position">${medals[player.denseRank - 1] || player.denseRank}</div><div class="final-rank-player"><strong>${G.escapeHtml(player.name)} ${tie}</strong>${team}${special}</div><div class="final-rank-points">${player.score} pts</div></div>`;
         }).join('')
       : '<div class="muted">Aucun participant classé.</div>';
 
@@ -62,6 +97,7 @@
     .ranking-card.final-complete-card{justify-content:flex-start;overflow:hidden;padding-top:12px}
     .ranking-card.final-complete-card .question-text{margin:4px auto 6px}
     .ranking-card.final-complete-card .podium{margin:4px auto 8px;min-height:0}
+    .podium-tie-label{margin:3px 0 1px;font-size:.72rem;font-weight:1000;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan)}
     .final-complete-ranking{width:min(1100px,100%);min-height:0;margin:2px auto 0;display:flex;flex-direction:column;overflow:hidden}
     .final-complete-ranking h3{margin:0 0 7px;text-align:center;font-size:clamp(1rem,2.2vh,1.45rem);text-transform:uppercase;letter-spacing:.08em;color:var(--cyan)}
     .final-score-list{min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px;padding:2px 5px 6px}
@@ -70,10 +106,14 @@
     .final-score-row.top-1{background:rgba(255,200,61,.15);border-color:rgba(255,200,61,.6)}
     .final-score-row.top-2{background:rgba(210,220,235,.12);border-color:rgba(210,220,235,.45)}
     .final-score-row.top-3{background:rgba(205,132,78,.13);border-color:rgba(205,132,78,.48)}
+    .final-score-row.special-chocolate{border-color:rgba(190,120,65,.62)}
+    .final-score-row.special-lantern{border-color:rgba(255,92,92,.68)}
     .final-rank-position{font-size:1.3rem;font-weight:1000;text-align:center}
     .final-rank-player{min-width:0;display:flex;flex-direction:column;line-height:1.05}
     .final-rank-player strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .final-player-team{margin-top:3px;color:var(--muted);font-size:.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .final-tie-label{font-size:.68em;color:var(--cyan);font-weight:900}
+    .final-special-award{margin-top:4px;font-size:.76rem;font-weight:900;letter-spacing:.02em}
     .final-rank-points{font-weight:1000;white-space:nowrap;color:var(--yellow)}
     @media(max-width:760px){.final-score-list{grid-template-columns:1fr}}
     @media(max-height:760px){.ranking-card.final-complete-card .podium{transform:scale(.9);transform-origin:center top;margin-bottom:-12px}.final-score-row{padding:6px 9px}.final-complete-ranking h3{margin-bottom:4px}}
