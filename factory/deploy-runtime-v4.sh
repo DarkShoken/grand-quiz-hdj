@@ -9,6 +9,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR=/opt/grand-quiz-factory
 TARGET="$INSTALL_DIR/quiz_factory.py"
+ENV_FILE=/etc/grand-quiz-factory.env
 
 for f in "$SCRIPT_DIR/quality_guard.py" "$SCRIPT_DIR/research_provider.py"; do
   if [ ! -f "$f" ]; then
@@ -21,6 +22,18 @@ if [ ! -f "$TARGET" ]; then
   echo "$TARGET introuvable. Lance d'abord factory/install-safe.sh." >&2
   exit 1
 fi
+
+# Ajoute les nouvelles variables sans jamais écraser une clé existante.
+touch "$ENV_FILE"
+ensure_env() {
+  local key="$1" value="$2"
+  grep -q "^${key}=" "$ENV_FILE" || printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+}
+ensure_env GEMINI_API_KEY ""
+ensure_env GEMINI_RESEARCH_MODEL "gemini-2.5-flash-lite"
+ensure_env TAVILY_API_KEY ""
+ensure_env SEARXNG_URL ""
+ensure_env MIN_SOURCE_DOMAINS "2"
 
 cp "$SCRIPT_DIR/quality_guard.py" "$INSTALL_DIR/quality_guard.py"
 cp "$SCRIPT_DIR/research_provider.py" "$INSTALL_DIR/research_provider.py"
@@ -101,6 +114,7 @@ echo "Runtime V4 installé :"
 echo "- recherche principale : Gemini 2.5 Flash-Lite + Google Search"
 echo "- secours 1 : Tavily Basic"
 echo "- secours 2 : SearXNG local si SEARXNG_URL est configuré"
+echo "- minimum : 2 domaines Web distincts"
 echo "- rédaction finale : Gemma 3 local"
 echo "- contrôle adversarial + difficulté : Gemma 3 local"
 echo "- Groq n'est plus utilisé dans le chemin texte normal"
