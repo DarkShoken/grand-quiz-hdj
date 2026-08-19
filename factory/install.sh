@@ -26,6 +26,9 @@ sudo -u "${SUDO_USER:-root}" ollama pull "$REVIEW_MODEL" || ollama pull "$REVIEW
 
 mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/quiz_factory_v2.py" "$INSTALL_DIR/quiz_factory.py"
+# groq/compound annonce actuellement 8192 tokens de sortie max. 8192 suffit aussi
+# largement à la passe finale GPT-OSS pour un lot de quelques questions.
+sed -i "s/'max_completion_tokens': 12000/'max_completion_tokens': 8192/g" "$INSTALL_DIR/quiz_factory.py"
 cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
@@ -69,6 +72,8 @@ echo
 echo "Installation / mise à jour terminée."
 echo "Auteur local : $AUTHOR_MODEL"
 echo "Secours local : $REVIEW_MODEL"
+echo "Groq recherche : groq/compound (sortie limitée à 8192 tokens)"
+echo "Groq validation : openai/gpt-oss-120b"
 echo "Ajoute GROQ_API_KEY dans $ENV_FILE pour activer Groq Compound + GPT-OSS 120B."
 echo "Sans clé Groq, la fabrique continue quand même avec Wikipédia + Gemma 3 local."
 echo "Test : charge l'environnement puis lance /opt/grand-quiz-factory/quiz_factory.py --once"
