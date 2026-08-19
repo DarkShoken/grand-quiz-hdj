@@ -33,6 +33,7 @@ cp "$SCRIPT_DIR/quiz_factory_v2.py" "$INSTALL_DIR/quiz_factory.py"
 # - parsing robuste de search_results.results
 # - GPT-OSS 120B sort du chemin bloquant : Gemma local juge le dossier Groq
 # - un 429 affiche désormais les compteurs/réinitialisations utiles
+# - les générations Ollama locales sont bornées pour éviter les dérives de plusieurs minutes
 python3 - "$INSTALL_DIR/quiz_factory.py" <<'PY'
 from pathlib import Path
 import sys
@@ -56,6 +57,18 @@ replacements = [
     (
         "'max_completion_tokens': 12000,",
         "'max_completion_tokens': 1500,"
+    ),
+    (
+        "'options': {'temperature':0.62,'top_p':0.82,'num_ctx':4096},",
+        "'options': {'temperature':0.62,'top_p':0.82,'num_ctx':4096,'num_predict':700},"
+    ),
+    (
+        "'options':{'temperature':0,'num_ctx':8192},",
+        "'options':{'temperature':0,'num_ctx':8192,'num_predict':900},"
+    ),
+    (
+        "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096},'keep_alive':0",
+        "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096,'num_predict':300},'keep_alive':0"
     ),
 ]
 for old, new in replacements:
@@ -227,9 +240,10 @@ systemctl daemon-reload
 
 echo
 echo "Installation / mise à jour V3 terminée."
-echo "Auteur : Qwen3 4B local"
+echo "Auteur : Qwen3 4B local · num_predict=700"
 echo "Recherche factuelle : Groq Compound Mini · 1 question · 1 web_search · 1500 tokens max"
-echo "Validation finale : Gemma 3 4B local sur le dossier Groq"
+echo "Validation finale : Gemma 3 4B local · num_predict=900"
+echo "Vision locale : Gemma 3 4B · num_predict=300"
 echo "Secours sans Groq : Wikipédia + Gemma 3 local"
 echo "BATCH_SIZE réellement appliqué : 1"
 echo "Les 429 affichent désormais leur cause et les compteurs Groq."
