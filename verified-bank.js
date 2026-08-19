@@ -5,6 +5,7 @@
   const generationPath = /\/api\/generate-questions(?:\?|$)/;
   const recentKey = 'grand-quiz-bank-recent-v1';
   const cacheKey = 'grand-quiz-bank-cache-v1';
+  const acceptedMap = window.GRAND_QUIZ_ACCEPTED_ANSWERS || (window.GRAND_QUIZ_ACCEPTED_ANSWERS = new Map());
 
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; } };
   const write = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
@@ -28,11 +29,16 @@
   }
 
   function registerMedia(q) {
-    if (!q.format) return;
+    if (!['image','clues','audio'].includes(q.format)) return;
     const library = window.GRAND_QUIZ_MEDIA_LIBRARY || (window.GRAND_QUIZ_MEDIA_LIBRARY = []);
     const item = { ...q };
     const index = library.findIndex((entry) => entry?.id === q.id);
     if (index >= 0) library[index] = item; else library.push(item);
+  }
+
+  function registerAnswers(q) {
+    const values = [q.answerText, ...(q.acceptedAnswers || [])].filter(Boolean);
+    if (values.length) acceptedMap.set(q.id, [...new Set(values)]);
   }
 
   function convert(row) {
@@ -43,24 +49,23 @@
       q.type='mcq'; q.options=Array.isArray(row.options)?row.options:[];
       q.answer=Number.isInteger(Number(a.index))?Number(a.index):q.options.findIndex(x=>String(x)===String(a.text||a.value||''));
       if (q.answer < 0) return null;
-      if (original === 'intruder') q.format='intruder';
     } else if (original === 'truefalse') {
       q.type='truefalse'; q.answer=a.value===true || String(a.value).toLowerCase()==='true' || String(a.text).toLowerCase()==='vrai';
     } else if (original === 'numeric' || original === 'estimation') {
       q.type='numeric'; q.answer=Number(a.value ?? a.text); q.unit=a.unit || '';
       if (!Number.isFinite(q.answer)) return null;
-      if (original === 'estimation') q.format='estimation';
     } else if (original === 'buzzer') {
       q.type='buzzer'; q.answerText=String(a.text||a.value||'').trim();
     } else if (original === 'progressive') {
       q.type='buzzer'; q.answerText=String(a.text||a.value||'').trim(); q.format='clues'; q.clues=Array.isArray(row.clues)?row.clues:[];
     } else if (original === 'image_mystery' || original === 'location') {
-      q.type='free'; q.answerText=String(a.text||a.value||'').trim(); q.format='image'; q.media=row.media || {};
+      q.type='free'; q.answerText=String(a.text||a.value||'').trim(); q.format='image'; q.media={...(row.media||{}),label:original==='location'?'Où sommes-nous ?':'Image mystère'};
     } else if (original === 'free') {
       q.type='free'; q.answerText=String(a.text||a.value||'').trim();
     } else return null;
     if ((q.type==='free'||q.type==='buzzer') && !q.answerText) return null;
     if (q.format==='image' && !q.media?.src) return null;
+    registerAnswers(q);
     registerMedia(q);
     return q;
   }
