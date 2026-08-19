@@ -30,21 +30,30 @@ function explanationConfirmsAnswer(explanation, answer) {
   return exp.includes(ans);
 }
 
-function normalizeReviewedQuestion(raw, allowedCategories) {
+function calibratedDifficulty(rate) {
+  const value = Number(rate);
+  if (!Number.isFinite(value) || value < 0 || value > 100) return null;
+  if (value >= 70) return 'Facile';
+  if (value >= 35) return 'Moyen';
+  return 'Difficile';
+}
+
+function normalizeReviewedQuestion(raw, allowedCategories, targetDifficulty) {
   if (!raw || raw.approved !== true) return null;
 
   const type = ['mcq', 'truefalse', 'numeric', 'buzzer', 'free'].includes(raw.type)
     ? raw.type
     : null;
   const category = cleanText(raw.category, 60);
-  const difficulty = ['Facile', 'Moyen', 'Difficile'].includes(raw.difficulty)
-    ? raw.difficulty
-    : null;
+  const rate = Math.round(Number(raw.estimatedSuccessRate));
+  const difficulty = calibratedDifficulty(rate);
   const question = cleanText(raw.question, 150);
   const explanation = cleanText(raw.explanation, 240);
   const topicKey = cleanText(raw.topicKey, 120);
 
   if (!type || !difficulty || !allowedCategories.includes(category)) return null;
+  if (rate < 8) return null; // trop obscur pour rester ludique, même en Difficile
+  if (targetDifficulty && targetDifficulty !== 'Mixte' && difficulty !== targetDifficulty) return null;
   if (question.length < 12 || question.length > 130 || !/[?？.]$/.test(question)) return null;
   if (explanation.length < 12 || !topicKey) return null;
 
@@ -52,12 +61,14 @@ function normalizeReviewedQuestion(raw, allowedCategories) {
     id: cleanText(raw.id, 120) || `reviewed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     category,
     difficulty,
+    estimatedSuccessRate: rate,
     type,
     question,
     explanation,
     topicKey,
     reviewed: true,
     independentlySolved: true,
+    difficultyCalibrated: true,
   };
 
   if (type === 'mcq') {
@@ -107,6 +118,9 @@ module.exports = async function handler(req, res) {
   const categories = Array.isArray(body.categories)
     ? body.categories.map((item) => cleanText(item, 60)).filter(Boolean).slice(0, 30)
     : [];
+  const targetDifficulty = ['Facile', 'Moyen', 'Difficile', 'Mixte'].includes(body.targetDifficulty)
+    ? body.targetDifficulty
+    : 'Mixte';
   const history = Array.isArray(body.history)
     ? body.history.slice(-180).map((entry) => ({
         question: cleanText(entry?.question || entry, 150),
@@ -121,12 +135,11 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  // Important : le contrôleur ne reçoit volontairement NI la réponse proposée,
-  // NI l'explication du premier modèle. Il doit résoudre chaque question lui-même.
+  // Le contrôleur ne reçoit NI la réponse, NI l'explication, NI l'étiquette de difficulté
+  // du premier modèle. Il résout et calibre donc chaque question indépendamment.
   const blindQuestions = questions.map((question) => ({
     id: cleanText(question?.id, 120),
     category: cleanText(question?.category, 60),
-    difficulty: cleanText(question?.difficulty, 20),
     type: cleanText(question?.type, 20),
     question: cleanText(question?.question, 150),
     options: Array.isArray(question?.options)
@@ -144,15 +157,15 @@ module.exports = async function handler(req, res) {
         items: {
           type: 'object',
           required: [
-            'id', 'approved', 'rejectionReason', 'category', 'difficulty', 'type',
+            'id', 'approved', 'rejectionReason', 'category', 'type',
             'question', 'options', 'answer', 'unit', 'explanation', 'topicKey',
+            'estimatedSuccessRate',
           ],
           properties: {
             id: { type: 'string' },
             approved: { type: 'boolean' },
             rejectionReason: { type: 'string' },
             category: { type: 'string' },
-            difficulty: { type: 'string', enum: ['Facile', 'Moyen', 'Difficile'] },
             type: { type: 'string', enum: ['mcq', 'truefalse', 'numeric', 'buzzer', 'free'] },
             question: { type: 'string' },
             options: { type: 'array', items: { type: 'string' } },
@@ -160,6 +173,7 @@ module.exports = async function handler(req, res) {
             unit: { type: 'string' },
             explanation: { type: 'string' },
             topicKey: { type: 'string' },
+            estimatedSuccessRate: { type: 'integer' },
           },
         },
       },
@@ -168,51 +182,44 @@ module.exports = async function handler(req, res) {
 
   const prompt = [
     'Tu es le vérificateur final indépendant d’un jeu télévisé français destiné à des adultes.',
-    'IMPORTANT : les réponses et explications proposées par le premier auteur t’ont volontairement été cachées. Tu dois résoudre chaque question toi-même, sans supposer que l’auteur avait raison.',
+    'IMPORTANT : la réponse, l’explication et la difficulté proposées par le premier auteur t’ont volontairement été cachées. Tu dois résoudre et calibrer chaque question toi-même.',
     'Tu dois être conservateur : si tu n’es pas certain du fait ou si plusieurs réponses sont défendables, rejette la question.',
     `Catégories autorisées : ${categories.join(', ')}.`,
+    targetDifficulty === 'Mixte'
+      ? 'La série demandée est de difficulté Mixte : calibre chaque question indépendamment sans chercher à conserver l’étiquette du premier auteur.'
+      : `La partie demande le niveau ${targetDifficulty}. Une question dont le taux de réussite estimé ne correspond pas réellement à ce niveau doit être rejetée.`,
     '',
     'MÉTHODE OBLIGATOIRE POUR CHAQUE QUESTION :',
-    '1. Lis seulement l’intitulé et les choix éventuels.',
-    '2. Détermine toi-même la réponse à partir d’une connaissance stable et incontestable.',
-    '3. Vérifie mentalement que les autres choix sont faux dans le cadre exact de la question.',
-    '4. Si l’intitulé est imprécis, daté, dépend d’une convention non précisée ou exige une information obscure dont tu n’es pas sûr, rejette la question.',
-    '5. Si elle est sûre, renvoie la bonne réponse que TU as déterminée et rédige une explication courte qui mentionne explicitement cette réponse.',
+    '1. Résous la question toi-même à partir de l’intitulé et des choix éventuels.',
+    '2. Vérifie que les autres choix sont faux dans le cadre exact de la question.',
+    '3. Si l’intitulé est imprécis, daté, dépend d’une convention non précisée ou d’un fait dont tu n’es pas sûr, approved=false.',
+    '4. Si elle est sûre, renvoie la réponse que TU as déterminée et une explication courte qui mentionne explicitement cette réponse.',
+    '5. Estime ensuite estimatedSuccessRate entre 0 et 100 : pourcentage de Français adultes de culture générale ordinaire qui répondraient correctement dans les conditions réelles du jeu, en voyant les choix pour un QCM.',
+    '',
+    'CALIBRAGE DE DIFFICULTÉ — très important :',
+    '- Le serveur classe automatiquement : 70–100 % = Facile ; 35–69 % = Moyen ; 0–34 % = Difficile.',
+    '- Une question évidente grâce aux choix reste Facile même si le sujet semble savant.',
+    '- Une question ne devient jamais Difficile parce qu’elle est mal formulée, piégeuse ou basée sur un détail arbitraire.',
+    '- Difficile doit correspondre à une connaissance précise mais intéressante et reconnaissable ; une anecdote microscopique estimée sous 8 % doit être rejetée.',
+    '- Évalue la notoriété réelle du fait demandé, pas simplement la notoriété du thème.',
     '',
     'CONTRÔLE FACTUEL :',
     '- Privilégie les faits stables, largement documentés et sans exception raisonnable.',
-    '- Rejette les légendes populaires, approximations, généralisations, superlatifs sans critère, statistiques mouvantes et informations dépendant de l’actualité.',
-    '- Pour Records du monde : uniquement des records humains clairement définis, avec date de référence lorsqu’ils peuvent évoluer.',
-    '- Pour Expressions françaises des régions : l’expression doit être réellement attestée dans la région indiquée ; rejette les usages trop diffus, discutables ou attribués à une région unique sans certitude.',
-    '- Pour les questions historiques, scientifiques ou géographiques : refuse toute formulation qui confond date, lieu, personne, unité, classification ou causalité.',
+    '- Rejette légendes populaires, approximations, généralisations, superlatifs sans critère, statistiques mouvantes et informations dépendant de l’actualité.',
+    '- Records du monde : uniquement records humains clairement définis, avec date de référence lorsqu’ils peuvent évoluer.',
+    '- Expressions françaises des régions : expression réellement attestée dans la région indiquée ; rejette les attributions régionales discutables.',
+    '- Architecture : styles, bâtiments, architectes et vocabulaire architectural sur des faits établis.',
+    '- BTP & travaux : outils, matériaux, métiers, étapes de chantier et principes techniques stables ; évite normes ou réglementations susceptibles d’évoluer.',
+    '- Jeux olympiques : histoire, disciplines, symboles et exploits historiques ; date tout record ou donnée susceptible d’évoluer.',
+    '- Célébrités : œuvres, rôles, carrières et faits biographiques publics et stables ; jamais rumeurs, vie privée, fortune, relation actuelle ou âge actuel.',
     '',
-    'QCM :',
-    '- Exactement quatre choix homogènes et une seule réponse incontestablement correcte.',
-    '- answer doit être exactement le texte de la bonne option.',
-    '- Si deux options peuvent être vraies selon une interprétation raisonnable, approved=false.',
+    'QCM : exactement quatre choix homogènes, une seule réponse incontestable ; answer doit être exactement le texte de la bonne option.',
+    'VRAI/FAUX : l’énoncé doit être entièrement vrai ou entièrement faux sans exception raisonnable ; answer vaut true ou false.',
+    'NUMÉRIQUE : accepte seulement une valeur exacte et stable ; answer contient uniquement la valeur numérique correcte.',
+    'BUZZER / LIBRE : réponse attendue courte et unique ; rejette les questions acceptant plusieurs entités réellement différentes.',
     '',
-    'VRAI/FAUX :',
-    '- L’énoncé doit être entièrement vrai ou entièrement faux sans exception raisonnable.',
-    '- answer vaut true ou false.',
-    '',
-    'NUMÉRIQUE :',
-    '- Accepte seulement une valeur exacte et stable.',
-    '- answer contient uniquement la valeur numérique correcte.',
-    '',
-    'BUZZER / LIBRE :',
-    '- La réponse attendue doit être courte et unique.',
-    '- Évite les questions où plusieurs formulations ou entités différentes pourraient être considérées comme correctes.',
-    '',
-    'DIFFICULTÉ :',
-    '- Facile : connaissance très répandue, >70 % de réussite attendue.',
-    '- Moyen : vraie culture générale, environ 30–70 %.',
-    '- Difficile : connaissance précise, <30 %, mais pas anecdote obscure ou arbitraire.',
-    '- Corrige l’étiquette si nécessaire.',
-    '',
-    'REDONDANCE :',
-    '- Compare les questions entre elles et avec l’historique.',
-    '- Deux questions testant le même fait ou la même relation sujet-réponse sont des doublons : n’en garde qu’une.',
-    '- topicKey résume le fait testé sous une forme stable, par exemple « paris|fleuve|seine ».',
+    'REDONDANCE : compare les questions entre elles et avec l’historique. Deux questions testant le même fait sont des doublons : n’en garde qu’une.',
+    'topicKey résume le fait testé sous une forme stable, par exemple « paris|fleuve|seine ».',
     '',
     `HISTORIQUE À NE PAS RÉPÉTER : ${JSON.stringify(history)}`,
     '',
@@ -255,7 +262,7 @@ module.exports = async function handler(req, res) {
 
     const parsed = JSON.parse(output);
     const approved = (parsed?.reviews || [])
-      .map((review) => normalizeReviewedQuestion(review, categories))
+      .map((review) => normalizeReviewedQuestion(review, categories, targetDifficulty))
       .filter(Boolean);
 
     res.status(200).json({
@@ -263,7 +270,8 @@ module.exports = async function handler(req, res) {
       reviewedCount: questions.length,
       approvedCount: approved.length,
       model: DEFAULT_MODEL,
-      qualityControl: 'blind-independent-answer-review-v2',
+      qualityControl: 'blind-answer-and-difficulty-review-v3',
+      targetDifficulty,
     });
   } catch (error) {
     console.error('Independent question review failed', error);
