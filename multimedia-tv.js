@@ -11,22 +11,12 @@
 
   function enrich(payload) {
     const source = bank.get(payload?.question?.id);
-    if (source && payload.question) payload.question = { ...payload.question, format: source.format, media: source.media, clues: source.clues };
+    if (source && payload.question) payload.question = { ...payload.question, format: source.format, media: source.media, clues: source.clues, originalType: source.originalType || source.type };
     return payload;
   }
 
-  function clearClues() {
-    clueTimers.forEach(clearTimeout);
-    clueTimers = [];
-  }
-
-  function stopMedia() {
-    if (mediaAudio) {
-      mediaAudio.pause();
-      mediaAudio.currentTime = 0;
-      mediaAudio = null;
-    }
-  }
+  function clearClues() { clueTimers.forEach(clearTimeout); clueTimers = []; }
+  function stopMedia() { if (mediaAudio) { mediaAudio.pause(); mediaAudio.currentTime = 0; mediaAudio = null; } }
 
   const originalCreateTransport = G.createTransport.bind(G);
   G.createTransport = function multimediaScreenTransport(options = {}) {
@@ -38,18 +28,12 @@
         if (message.type === 'state') {
           latest = enrich(message.payload);
           const nextId = latest?.question?.id || null;
-          if (nextId !== currentQuestionId) {
-            currentQuestionId = nextId;
-            clearClues();
-            stopMedia();
-          }
+          if (nextId !== currentQuestionId) { currentQuestionId = nextId; clearClues(); stopMedia(); }
           originalOnMessage?.({ ...message, payload: latest });
           queuePatch();
           return;
         }
-        if (message.type === 'media_control' && message.payload?.action === 'play' && message.payload?.questionId === latest?.question?.id) {
-          playCurrentMedia();
-        }
+        if (message.type === 'media_control' && message.payload?.action === 'play' && message.payload?.questionId === latest?.question?.id) playCurrentMedia();
         originalOnMessage?.(message);
       },
     });
@@ -59,115 +43,72 @@
     if (audioCtx && audioCtx.state !== 'closed') return audioCtx;
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return null;
-    audioCtx = new Ctx();
-    return audioCtx;
+    audioCtx = new Ctx(); return audioCtx;
   }
-
   function midiToHz(note) { return 440 * Math.pow(2, (note - 69) / 12); }
-
   function tone(note, at, duration, gainValue = 0.12) {
-    const ctx = ensureAudioContext();
-    if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(midiToHz(note), at);
-    gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(gainValue, at + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.start(at); osc.stop(at + duration + 0.04);
+    const ctx = ensureAudioContext(); if (!ctx) return;
+    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+    osc.type = 'triangle'; osc.frequency.setValueAtTime(midiToHz(note), at);
+    gain.gain.setValueAtTime(0.0001, at); gain.gain.exponentialRampToValueAtTime(gainValue, at + 0.015); gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+    osc.connect(gain); gain.connect(ctx.destination); osc.start(at); osc.stop(at + duration + 0.04);
   }
 
   async function playSynth(name) {
-    const ctx = ensureAudioContext();
-    if (!ctx) return;
+    const ctx = ensureAudioContext(); if (!ctx) return;
     try { if (ctx.state !== 'running') await ctx.resume(); } catch {}
-    const start = ctx.currentTime + 0.05;
-    let sequence = [];
-    let beat = 0.34;
+    const start = ctx.currentTime + 0.05; let sequence = []; let beat = 0.34;
     if (name === 'beethoven5') { sequence = [[67,.22],[67,.22],[67,.22],[63,.72],[65,.22],[65,.22],[65,.22],[62,.72]]; beat = 0.28; }
     if (name === 'frere-jacques') { sequence = [60,62,64,60,60,62,64,60,64,65,67,null,64,65,67].map(n => [n,n == null ? .22 : .3]); beat = 0.33; }
     if (name === 'au-clair-de-la-lune') { sequence = [60,60,60,62,64,62,60,64,62,62,60].map(n => [n,.31]); beat = 0.34; }
     if (name === 'morse-sos') {
       let t = start; const dot=.11, dash=.33, gap=.09, letter=.28;
-      for (const symbol of ['...','---','...']) {
-        for (const char of symbol) { tone(81, t, char === '.' ? dot : dash, .1); t += (char === '.' ? dot : dash) + gap; }
-        t += letter;
-      }
+      for (const symbol of ['...','---','...']) { for (const char of symbol) { tone(81, t, char === '.' ? dot : dash, .1); t += (char === '.' ? dot : dash) + gap; } t += letter; }
       return;
     }
-    let t = start;
-    for (const [note, duration] of sequence) {
-      if (note != null) tone(note, t, duration || beat * .8, .1);
-      t += beat;
-    }
+    let t = start; for (const [note, duration] of sequence) { if (note != null) tone(note, t, duration || beat * .8, .1); t += beat; }
   }
 
   async function playCurrentMedia() {
-    const media = latest?.question?.media;
-    if (!media || latest?.paused) return;
+    const media = latest?.question?.media; if (!media || latest?.paused) return;
     window.GrandQuizMusic?.setVolume?.(0.025);
-    if (media.kind === 'synth') {
-      await playSynth(media.synth);
-      setTimeout(() => window.GrandQuizMusic?.setVolume?.(0.145), Math.max(2500, (Number(media.duration) || 5) * 1000));
-      return;
-    }
+    if (media.kind === 'synth') { await playSynth(media.synth); setTimeout(() => window.GrandQuizMusic?.setVolume?.(0.145), Math.max(2500, (Number(media.duration) || 5) * 1000)); return; }
     if (media.kind === 'audio' && media.src) {
-      stopMedia();
-      mediaAudio = new Audio(media.src);
-      mediaAudio.preload = 'auto';
+      stopMedia(); mediaAudio = new Audio(media.src); mediaAudio.preload = 'auto';
       mediaAudio.addEventListener('ended', () => window.GrandQuizMusic?.setVolume?.(0.145), { once: true });
       try { await mediaAudio.play(); } catch { window.GrandQuizMusic?.setVolume?.(0.145); }
     }
   }
 
-  function queuePatch() {
-    if (patchQueued) return;
-    patchQueued = true;
-    requestAnimationFrame(patch);
-  }
-
+  function queuePatch() { if (patchQueued) return; patchQueued = true; requestAnimationFrame(patch); }
   function patch() {
     patchQueued = false;
-    const q = latest?.question;
-    const stage = document.getElementById('stage');
+    const q = latest?.question; const stage = document.getElementById('stage');
     if (!stage || latest?.phase !== 'question' || !q?.format) return;
-    const card = stage.querySelector('.question-card');
-    if (!card) return;
+    const card = stage.querySelector('.question-card'); if (!card) return;
 
     if (q.format === 'audio' && !card.querySelector('.media-audio-card')) {
-      const node = document.createElement('div');
-      node.className = 'media-audio-card';
+      const node = document.createElement('div'); node.className = 'media-audio-card';
       node.innerHTML = `<div class="media-format-title">🎧 ÉCOUTEZ BIEN</div><div class="media-equalizer"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="media-caption">${G.escapeHtml(q.media?.label || 'Extrait audio')}</div><button id="tvMediaPlay" class="btn primary" type="button">▶ Écouter l’extrait</button>`;
-      card.querySelector('.question-text')?.after(node);
-      node.querySelector('#tvMediaPlay')?.addEventListener('click', playCurrentMedia);
+      card.querySelector('.question-text')?.after(node); node.querySelector('#tvMediaPlay')?.addEventListener('click', playCurrentMedia);
     }
 
     if (q.format === 'image' && q.media?.src && !card.querySelector('.media-image-card')) {
-      const node = document.createElement('div');
-      node.className = 'media-image-card';
-      node.innerHTML = `<div class="media-format-title">🖼️ IMAGE MYSTÈRE</div><img alt="${G.escapeHtml(q.media.label || 'Image mystère')}" src="${q.media.src}">`;
-      card.querySelector('.question-text')?.after(node);
-      requestAnimationFrame(() => node.classList.add('revealing'));
+      const node = document.createElement('div'); node.className = 'media-image-card';
+      const title = q.originalType === 'location' ? '📍 OÙ SOMMES-NOUS ?' : '🖼️ IMAGE MYSTÈRE';
+      node.innerHTML = `<div class="media-format-title">${title}</div><img alt="${G.escapeHtml(q.media.label || 'Image mystère')}" src="${q.media.src}">`;
+      card.querySelector('.question-text')?.after(node); requestAnimationFrame(() => node.classList.add('revealing'));
     }
 
     if (q.format === 'clues' && Array.isArray(q.clues) && !card.querySelector('.media-clues-card')) {
-      clearClues();
-      const node = document.createElement('div');
-      node.className = 'media-clues-card';
+      clearClues(); const node = document.createElement('div'); node.className = 'media-clues-card';
       node.innerHTML = `<div class="media-format-title">🧩 INDICES PROGRESSIFS</div><div class="media-clues-list"></div>`;
-      card.querySelector('.question-text')?.after(node);
-      const list = node.querySelector('.media-clues-list');
+      card.querySelector('.question-text')?.after(node); const list = node.querySelector('.media-clues-list');
       const reveal = (index) => {
         if (latest?.paused || latest?.phase !== 'question' || latest?.question?.id !== q.id || latest?.buzzedPlayerId) return;
-        const clue = document.createElement('div');
-        clue.className = 'media-clue';
-        clue.innerHTML = `<span>${index + 1}</span>${G.escapeHtml(q.clues[index])}`;
-        list.appendChild(clue);
+        const clue = document.createElement('div'); clue.className = 'media-clue'; clue.innerHTML = `<span>${index + 1}</span>${G.escapeHtml(q.clues[index])}`; list.appendChild(clue);
       };
-      reveal(0);
-      q.clues.slice(1).forEach((_, index) => clueTimers.push(setTimeout(() => reveal(index + 1), (index + 1) * 4500)));
+      reveal(0); q.clues.slice(1).forEach((_, index) => clueTimers.push(setTimeout(() => reveal(index + 1), (index + 1) * 4500)));
     }
   }
 
