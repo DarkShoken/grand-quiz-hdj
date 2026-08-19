@@ -29,8 +29,9 @@ cp "$SCRIPT_DIR/quiz_factory_v2.py" "$INSTALL_DIR/quiz_factory.py"
 
 # Consolidation V3 : on corrige le script installé en un seul passage Python.
 # - BATCH_SIZE=1 est réellement respecté
-# - Compound Mini fait uniquement le web_search, 1500 tokens max
-# - parsing robuste de search_results.results
+# - Compound Mini fait obligatoirement un web_search, 1500 tokens max
+# - parsing robuste de search_results.results + repli sur les URLs de sortie
+# - aucun dossier Groq sans source n'est accepté : repli Wikipédia automatique
 # - GPT-OSS 120B sort du chemin bloquant : Gemma local juge le dossier Groq
 # - un 429 affiche les compteurs/réinitialisations utiles
 # - Qwen fonctionne sans thinking et avec un budget suffisant pour terminer son JSON
@@ -53,7 +54,7 @@ replacements = [
     ),
     (
         "'compound_custom': {'tools': {'enabled_tools': ['web_search','visit_website']}},",
-        "'compound_custom': {'tools': {'enabled_tools': ['web_search']}},"
+        "'compound_custom': {'tools': {'enabled_tools': ['web_search']}},\n        'tool_choice': 'required',\n        'citation_options': 'enabled',"
     ),
     (
         "'max_completion_tokens': 12000,",
@@ -152,6 +153,11 @@ old_sources = '''    sources = []
     return {'text': content, 'sources': sources[:24], 'provider':'groq-compound'}
 '''
 new_sources = '''    sources = []
+    def add_source(url, title=''):
+        url = str(url or '').strip().rstrip('.,;:')
+        if url.startswith(('http://','https://')) and not any(x.get('url') == url for x in sources):
+            sources.append({'source':'Groq web search','title':str(title or '')[:180], 'url':url})
+
     for tool in msg.get('executed_tools') or []:
         if not isinstance(tool, dict):
             continue
@@ -163,11 +169,19 @@ new_sources = '''    sources = []
         else:
             results = []
         for sr in results:
-            if not isinstance(sr, dict):
-                continue
-            url = sr.get('url') or sr.get('link')
-            if url and not any(x.get('url') == url for x in sources):
-                sources.append({'source':'Groq web search','title':str(sr.get('title') or '')[:180], 'url':url})
+            if isinstance(sr, dict):
+                add_source(sr.get('url') or sr.get('link'), sr.get('title'))
+        if not results:
+            for url in re.findall(r'https?://[^\\s<>\\]\\[(){}"\\\\]+', str(tool.get('output') or '')):
+                add_source(url)
+
+    if not sources:
+        for url in re.findall(r'https?://[^\\s<>\\]\\[(){}"\\\\]+', content):
+            add_source(url)
+
+    if not sources:
+        raise RuntimeError('Groq web_search sans source exploitable')
+
     return {'text': content, 'sources': sources[:24], 'provider':'groq-compound-mini+gemma3'}
 '''
 if old_sources not in text:
@@ -261,12 +275,12 @@ systemctl daemon-reload
 echo
 echo "Installation / mise à jour V3 terminée."
 echo "Auteur : Qwen3 4B local · think=false · num_predict=1200"
-echo "Recherche factuelle : Groq Compound Mini · 1 question · 1 web_search · 1500 tokens max"
+echo "Recherche factuelle : Groq Compound Mini · web_search OBLIGATOIRE · 1500 tokens max"
 echo "Validation finale : Gemma 3 4B local · num_predict=1400"
 echo "Vision locale : Gemma 3 4B · num_predict=400"
-echo "Secours sans Groq : Wikipédia + Gemma 3 local"
+echo "Secours sans source Groq : Wikipédia + Gemma 3 local"
 echo "BATCH_SIZE réellement appliqué : 1"
-echo "Les erreurs JSON Qwen indiquent désormais done_reason et longueur de sortie."
+echo "Les erreurs JSON Qwen indiquent done_reason et longueur de sortie."
 echo "Les 429 affichent leur cause et les compteurs Groq."
 echo "Les clés FACTORY_TOKEN et GROQ_API_KEY existantes sont conservées."
 echo
