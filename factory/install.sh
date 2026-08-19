@@ -28,12 +28,13 @@ mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/quiz_factory_v2.py" "$INSTALL_DIR/quiz_factory.py"
 
 # Consolidation V3 : on corrige le script installé en un seul passage Python.
-# - BATCH_SIZE=1 est réellement respecté (le code V2 imposait encore un minimum de 2)
+# - BATCH_SIZE=1 est réellement respecté
 # - Compound Mini fait uniquement le web_search, 1500 tokens max
 # - parsing robuste de search_results.results
 # - GPT-OSS 120B sort du chemin bloquant : Gemma local juge le dossier Groq
-# - un 429 affiche désormais les compteurs/réinitialisations utiles
-# - les générations Ollama locales sont bornées pour éviter les dérives de plusieurs minutes
+# - un 429 affiche les compteurs/réinitialisations utiles
+# - Qwen fonctionne sans thinking et avec un budget suffisant pour terminer son JSON
+# - les générations locales restent bornées pour éviter les dérives de plusieurs minutes
 python3 - "$INSTALL_DIR/quiz_factory.py" <<'PY'
 from pathlib import Path
 import sys
@@ -59,20 +60,42 @@ replacements = [
         "'max_completion_tokens': 1500,"
     ),
     (
+        "        'stream': False,\n        'format': qwen_schema(),",
+        "        'stream': False,\n        'think': False,\n        'format': qwen_schema(),"
+    ),
+    (
         "'options': {'temperature':0.62,'top_p':0.82,'num_ctx':4096},",
-        "'options': {'temperature':0.62,'top_p':0.82,'num_ctx':4096,'num_predict':700},"
+        "'options': {'temperature':0.45,'top_p':0.82,'num_ctx':4096,'num_predict':1200},"
     ),
     (
         "'options':{'temperature':0,'num_ctx':8192},",
-        "'options':{'temperature':0,'num_ctx':8192,'num_predict':900},"
+        "'options':{'temperature':0,'num_ctx':8192,'num_predict':1400},"
     ),
     (
         "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096},'keep_alive':0",
-        "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096,'num_predict':300},'keep_alive':0"
+        "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096,'num_predict':400},'keep_alive':0"
     ),
 ]
 for old, new in replacements:
     text = text.replace(old, new)
+
+old_qwen_parse = """    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=600)
+    r.raise_for_status()
+    data = json.loads(r.json().get('message',{}).get('content',''))
+"""
+new_qwen_parse = """    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=600)
+    r.raise_for_status()
+    ollama_reply = r.json()
+    content = ollama_reply.get('message',{}).get('content','')
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as exc:
+        reason = ollama_reply.get('done_reason','inconnu')
+        raise RuntimeError(f'Qwen JSON incomplet/invalide (done_reason={reason}, chars={len(content)}): {exc}') from exc
+"""
+if old_qwen_parse not in text:
+    raise SystemExit('Bloc de parsing Qwen introuvable')
+text = text.replace(old_qwen_parse, new_qwen_parse, 1)
 
 old_cooldown = '''def mark_groq_cooldown(response=None):
     global groq_disabled_until
@@ -151,8 +174,6 @@ if old_sources not in text:
     raise SystemExit('Bloc de parsing Groq introuvable')
 text = text.replace(old_sources, new_sources, 1)
 
-# Le dossier Web est déjà indépendant de Qwen. Gemma le juge localement :
-# une seule requête cloud par question, pas de deuxième quota GPT-OSS bloquant.
 old_review = '''            evidence = groq_research(candidates)
             reviewed = groq_finalize(category, candidates, evidence)
             print(f'  Vérification Groq : {len(reviewed)}/{len(candidates)} retenues · {len(evidence["sources"])} sources', flush=True)
@@ -198,7 +219,6 @@ else
   grep -q '^GROQ_COOLDOWN_SECONDS=' "$ENV_FILE" || echo 'GROQ_COOLDOWN_SECONDS=60' >> "$ENV_FILE"
 fi
 
-# Réglages de production stables ; les secrets existants ne sont jamais remplacés.
 if grep -q '^BATCH_SIZE=' "$ENV_FILE"; then
   sed -i 's/^BATCH_SIZE=.*/BATCH_SIZE=1/' "$ENV_FILE"
 else
@@ -240,12 +260,13 @@ systemctl daemon-reload
 
 echo
 echo "Installation / mise à jour V3 terminée."
-echo "Auteur : Qwen3 4B local · num_predict=700"
+echo "Auteur : Qwen3 4B local · think=false · num_predict=1200"
 echo "Recherche factuelle : Groq Compound Mini · 1 question · 1 web_search · 1500 tokens max"
-echo "Validation finale : Gemma 3 4B local · num_predict=900"
-echo "Vision locale : Gemma 3 4B · num_predict=300"
+echo "Validation finale : Gemma 3 4B local · num_predict=1400"
+echo "Vision locale : Gemma 3 4B · num_predict=400"
 echo "Secours sans Groq : Wikipédia + Gemma 3 local"
 echo "BATCH_SIZE réellement appliqué : 1"
-echo "Les 429 affichent désormais leur cause et les compteurs Groq."
+echo "Les erreurs JSON Qwen indiquent désormais done_reason et longueur de sortie."
+echo "Les 429 affichent leur cause et les compteurs Groq."
 echo "Les clés FACTORY_TOKEN et GROQ_API_KEY existantes sont conservées."
 echo
