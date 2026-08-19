@@ -11,16 +11,24 @@ SOCIAL_HOSTS = {
     "pinterest.com", "www.pinterest.com",
 }
 
+DIFFICULTY_RANGES = {
+    "Facile": (70, 95),
+    "Moyen": (35, 69),
+    "Difficile": (8, 34),
+}
+
 
 def _norm(value):
-    text = str(value or "")
-    # Préserver les frontières de mots avant la translittération ASCII :
-    # « n’appartient » doit devenir « n appartient », pas « nappartient ».
-    text = text.replace("’", " ").replace("'", " ")
-    text = text.replace("œ", "oe").replace("Œ", "OE")
+    text = str(value or "").replace("’", "'").replace("`", "'")
     text = unicodedata.normalize("NFD", text)
     text = text.encode("ascii", "ignore").decode().lower()
+    text = text.replace("'", " ")
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _answer_norm(value):
+    text = _norm(value)
+    return re.sub(r"^(?:l |le |la |les |un |une |des |du |de la |de l )", "", text).strip()
 
 
 def _host(url):
@@ -53,6 +61,7 @@ def _intruder_stem_ok(question):
 
 def _answers_match(qtype, independent, question):
     expected = str(question.get("answer") or "").strip()
+
     if qtype in {"numeric", "estimation"}:
         try:
             a = float(str(independent).replace(",", ".").strip())
@@ -60,22 +69,24 @@ def _answers_match(qtype, independent, question):
             return abs(a - b) <= max(1e-9, abs(b) * 1e-9)
         except Exception:
             return False
+
     if qtype == "truefalse":
-        a = _norm(independent)
-        b = _norm(expected)
-        aliases = {"true": "true", "vrai": "true", "false": "false", "faux": "false"}
-        return aliases.get(a) == aliases.get(b) and aliases.get(b) is not None
+        aliases = {
+            "true": "true", "vrai": "true",
+            "false": "false", "faux": "false",
+        }
+        return aliases.get(_norm(independent)) == aliases.get(_norm(expected))
 
     accepted = [expected] + list(question.get("accepted_answers") or [])
-    ni = _norm(independent)
-    return bool(ni) and any(ni == _norm(x) for x in accepted if _norm(x))
+    ni = _answer_norm(independent)
+    return bool(ni) and any(ni == _answer_norm(x) for x in accepted if _answer_norm(x))
 
 
 def _qid(question):
     return str(question.get("id") or "?")
 
 
-def _short(value, limit=300):
+def _short(value, limit=320):
     text = re.sub(r"\s+", " ", str(value or "")).strip()
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
@@ -86,13 +97,17 @@ def _reject(question, code, detail=""):
     return False
 
 
+def _difficulty_ok(difficulty, pct):
+    lo, hi = DIFFICULTY_RANGES.get(str(difficulty or ""), (8, 95))
+    return lo <= pct <= hi, lo, hi
+
+
 def adversarial_review(question, evidence, ollama_url, model, session):
     """Return True only if an independent adversarial pass confirms the final item."""
     qtype = str(question.get("type") or "")
     provider = str(evidence.get("provider") or "")
+    difficulty = str(question.get("difficulty") or "")
 
-    # Text questions need at least two independent non-social domains.
-    # Visual questions are handled by the dedicated Wikimedia+vision path.
     usable_hosts = _usable_hosts(evidence)
     if not provider.startswith("gemma3-vision") and len(usable_hosts) < 2:
         return _reject(
@@ -107,7 +122,7 @@ def adversarial_review(question, evidence, ollama_url, model, session):
     blind = {
         "category": question.get("category"),
         "type": qtype,
-        "difficulty": question.get("difficulty"),
+        "difficulty": difficulty,
         "question": question.get("question"),
         "options": question.get("options") or [],
         "unit": question.get("unit") or "",
@@ -115,49 +130,62 @@ def adversarial_review(question, evidence, ollama_url, model, session):
     }
 
     prompt = """Tu es le CONTRÔLEUR ADVERSARIAL final d'un quiz français pour adultes.
-La réponse validée par le rédacteur t'est volontairement cachée. Tu ne dois PAS réparer la question : tu dois la résoudre indépendamment et chercher de vraies ambiguïtés.
+La réponse validée par le rédacteur t'est cachée. Résous la question indépendamment à partir du dossier factuel.
 
-Utilise uniquement le dossier factuel fourni et lis LA QUESTION AU SENS LITTÉRAL.
-approved=true seulement si la question est précise, naturelle, non anachronique, stable, et possède une seule réponse correcte démontrée par le dossier.
+Évalue DEUX choses séparément :
+1) VALIDITÉ : factualité, précision du libellé, unicité réelle de la réponse, absence d'anachronisme.
+2) DIFFICULTÉ RÉELLE pour un adulte moyen jouant à un quiz de culture générale, AVEC les options visibles lorsqu'il y en a.
 
-IMPORTANT — NE CONFONDS PAS PLAUSIBILITÉ ET AMBIGUÏTÉ :
-- Un distracteur peut être plausible, ressembler à une erreur fréquente, être une autre date réelle ou appartenir au même domaine : cela est NORMAL dans un quiz et ne rend PAS la question ambiguë.
-- Une option est « satisfaisante » seulement si elle répond réellement et littéralement à la question posée.
-- N'invente jamais une autre interprétation non demandée (par exemple date de production si la question demande date de diffusion).
-- Rejette pour ambiguïté uniquement si AU MOINS DEUX réponses satisfont réellement le libellé exact, ou si le libellé ne permet pas de savoir ce qui est demandé.
+IMPORTANT :
+- N'invente pas d'interprétation non demandée.
+- Un distracteur plausible n'est pas une seconde bonne réponse.
+- Une ambiguïté existe seulement si au moins deux réponses satisfont réellement le libellé exact.
+- Ne mets dans satisfying_options QUE les options qui répondent littéralement à la question.
+- Pour un intrus, satisfying_options contient uniquement l'intrus.
+- Les distracteurs doivent être homogènes et crédibles. S'ils rendent la bonne réponse évidente par simple élimination, distractors_plausible=false.
+- Une question de niveau Moyen ne doit pas être une évidence de culture générale élémentaire. Estime honnêtement le taux de réussite, ne le force pas dans la tranche demandée.
+- Une date/statistique mouvante doit avoir une période de référence claire.
+- approved concerne la VALIDITÉ seulement. Ne rejette pas dans approved uniquement parce que le niveau de difficulté est mauvais : utilise estimated_success_pct.
 
-RÈGLES STRICTES :
-- QCM : examine CHAQUE option. Mets dans satisfying_options uniquement les options qui répondent effectivement à la question. Il doit y en avoir exactement une.
-- Intrus : satisfying_options contient uniquement l'élément qui NE partage PAS la propriété commune demandée. Il doit y en avoir exactement un.
-- Vrai/faux : independent_answer doit être EXACTEMENT la chaîne "true" ou "false". Ne mets jamais une phrase, une justification ni le fait reformulé dans independent_answer ; place l'explication dans reason.
-- Numérique/estimation : donne la valeur qui répond exactement au libellé. Une date ou statistique mouvante doit avoir une période de référence claire ; sinon approved=false.
-- Libre/buzzer/progressive : une réponse courte unique doit être démontrée.
-- Rejette les formulations réellement trop larges dans le temps, les catégories vagues, les anachronismes et les contradictions du dossier.
-- Ne te fie pas au nombre de sources : vérifie ce que le dossier affirme réellement.
-- independent_answer = ta réponse indépendante à la question exacte.
-- reason doit expliquer brièvement pourquoi la question est acceptée ou rejetée. Il doit être cohérent avec satisfying_options.
+ÉCHELLE estimated_success_pct :
+- 90-95 : quasi évident
+- 70-89 : facile
+- 35-69 : moyen
+- 8-34 : difficile
+- <8 : trop obscur
 
-Pour QCM/intrus :
-- si satisfying_options contient exactement une option correcte et que le reste est faux pour LE LIBELLÉ POSÉ, approved peut être true ;
-- ne mets jamais les quatre options dans satisfying_options simplement parce qu'elles sont toutes « plausibles » ou « défendables » dans l'absolu.
+RÈGLES PAR TYPE :
+- QCM : exactement une option doit satisfaire le libellé.
+- Intrus : exactement un élément ne doit pas partager la propriété commune.
+- Vrai/faux : independent_answer doit être exactement \"true\" ou \"false\".
+- Numérique/estimation : independent_answer contient uniquement la valeur numérique utile.
+- Libre/buzzer/progressive : réponse courte unique et explicitement démontrée.
 
-Retourne uniquement un JSON conforme au schéma.
+Retourne uniquement le JSON conforme au schéma.
 DOSSIER FACTUEL :
 """ + str(evidence.get("text") or "") + "\nQUESTION FINALE SANS RÉPONSE :\n" + json.dumps(blind, ensure_ascii=False)
 
-    independent_schema = (
-        {"type": "string", "enum": ["true", "false"]}
-        if qtype == "truefalse"
-        else {"type": "string"}
-    )
+    independent_schema = {"type": "string"}
+    if qtype == "truefalse":
+        independent_schema = {"type": "string", "enum": ["true", "false"]}
+
     schema = {
         "type": "object",
         "additionalProperties": False,
-        "required": ["approved", "independent_answer", "satisfying_options", "reason"],
+        "required": [
+            "approved",
+            "independent_answer",
+            "satisfying_options",
+            "distractors_plausible",
+            "estimated_success_pct",
+            "reason",
+        ],
         "properties": {
             "approved": {"type": "boolean"},
             "independent_answer": independent_schema,
             "satisfying_options": {"type": "array", "items": {"type": "string"}},
+            "distractors_plausible": {"type": "boolean"},
+            "estimated_success_pct": {"type": "integer", "minimum": 0, "maximum": 100},
             "reason": {"type": "string"},
         },
     }
@@ -167,7 +195,7 @@ DOSSIER FACTUEL :
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "format": schema,
-        "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 550},
+        "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 650},
         "keep_alive": 0,
     }
 
@@ -175,53 +203,72 @@ DOSSIER FACTUEL :
         response = session.post(f"{ollama_url}/api/chat", json=payload, timeout=900)
         response.raise_for_status()
         reply = response.json()
-        content = reply.get("message", {}).get("content", "")
-        raw = json.loads(content)
+        raw = json.loads(reply.get("message", {}).get("content", ""))
     except Exception as exc:
         return _reject(question, "erreur_controleur", f"{type(exc).__name__}: {exc}")
 
     reason = _short(raw.get("reason"))
     independent = _short(raw.get("independent_answer"))
     satisfying = [str(x).strip() for x in raw.get("satisfying_options") or [] if str(x).strip()]
-
-    # Une sortie structurée auto-contradictoire est rejetée : on ne devine pas à la place du contrôleur.
-    if qtype in {"mcq", "intruder"} and raw.get("approved") is True and len(satisfying) != 1:
-        return _reject(
-            question,
-            "sortie_controleur_incoherente",
-            f"approved=true mais options_satisfaisantes={len(satisfying)} · {satisfying} · raison={reason}",
-        )
+    try:
+        estimated_pct = int(raw.get("estimated_success_pct"))
+    except Exception:
+        return _reject(question, "difficulte_invalide", raw.get("estimated_success_pct"))
 
     if raw.get("approved") is not True:
         return _reject(
             question,
             "controleur_refuse",
-            f"raison={reason or 'non précisée'} · réponse_indépendante={independent or 'vide'} · options_satisfaisantes={satisfying}",
+            f"raison={reason or 'non précisée'} · réponse_indépendante={independent or 'vide'} · "
+            f"options_satisfaisantes={satisfying} · réussite_estimée={estimated_pct}%",
         )
 
     if qtype in {"mcq", "intruder"}:
+        if len(satisfying) != 1:
+            return _reject(
+                question,
+                "nombre_options_satisfaisantes",
+                f"attendu=1 · obtenu={len(satisfying)} · {satisfying} · raison={reason}",
+            )
+        if raw.get("distractors_plausible") is not True:
+            return _reject(
+                question,
+                "distracteurs_trop_faciles",
+                f"réussite_estimée={estimated_pct}% · raison={reason}",
+            )
         expected = str(question.get("answer") or "").strip()
-        if _norm(satisfying[0]) != _norm(expected):
+        if _answer_norm(satisfying[0]) != _answer_norm(expected):
             return _reject(
                 question,
                 "reponse_independante_differe",
                 f"rédacteur={expected!r} · contrôleur={satisfying[0]!r} · raison={reason}",
             )
-        print(
-            f"  Quality gate détail [{_qid(question)}] : OK · option satisfaisante={satisfying[0]!r} · domaines={len(usable_hosts)}",
-            flush=True,
-        )
-        return True
+    else:
+        if not _answers_match(qtype, raw.get("independent_answer"), question):
+            return _reject(
+                question,
+                "reponse_independante_differe",
+                f"rédacteur={question.get('answer')!r} · contrôleur={independent!r} · raison={reason}",
+            )
 
-    if not _answers_match(qtype, raw.get("independent_answer"), question):
+    diff_ok, lo, hi = _difficulty_ok(difficulty, estimated_pct)
+    if not diff_ok:
         return _reject(
             question,
-            "reponse_independante_differe",
-            f"rédacteur={question.get('answer')!r} · contrôleur={independent!r} · raison={reason}",
+            "difficulte_estimee_hors_cible",
+            f"cible={difficulty} {lo}-{hi}% · réussite_estimée={estimated_pct}% · raison={reason}",
         )
 
-    print(
-        f"  Quality gate détail [{_qid(question)}] : OK · réponse={independent!r} · domaines={len(usable_hosts)}",
-        flush=True,
-    )
+    if qtype in {"mcq", "intruder"}:
+        print(
+            f"  Quality gate détail [{_qid(question)}] : OK · option={satisfying[0]!r} · "
+            f"réussite_estimée={estimated_pct}% · domaines={len(usable_hosts)}",
+            flush=True,
+        )
+    else:
+        print(
+            f"  Quality gate détail [{_qid(question)}] : OK · réponse={independent!r} · "
+            f"réussite_estimée={estimated_pct}% · domaines={len(usable_hosts)}",
+            flush=True,
+        )
     return True
