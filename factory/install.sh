@@ -33,6 +33,50 @@ sed -i "s/'max_completion_tokens': 12000/'max_completion_tokens': 1500/g" "$INST
 # Pour la recherche documentaire, un seul web_search est voulu. Compound Mini
 # est volontairement empêché de lancer une visite de site supplémentaire.
 sed -i "s/\['web_search','visit_website'\]/['web_search']/g" "$INSTALL_DIR/quiz_factory.py"
+
+# Groq renvoie search_results sous la forme {"results": [...]}. Certaines
+# versions/SDK peuvent aussi exposer directement une liste. Le parseur initial
+# traitait le dictionnaire comme une liste et finissait par appeler .get() sur
+# la chaîne "results". On accepte les deux formats et on ignore proprement les
+# valeurs inattendues.
+python3 - "$INSTALL_DIR/quiz_factory.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8')
+old = """    sources = []
+    for tool in msg.get('executed_tools') or []:
+        for sr in tool.get('search_results') or []:
+            url = sr.get('url') or sr.get('link')
+            if url and not any(x.get('url') == url for x in sources):
+                sources.append({'source':'Groq web search','title':str(sr.get('title') or '')[:180], 'url':url})
+    return {'text': content, 'sources': sources[:24], 'provider':'groq-compound'}
+"""
+new = """    sources = []
+    for tool in msg.get('executed_tools') or []:
+        if not isinstance(tool, dict):
+            continue
+        raw_results = tool.get('search_results')
+        if isinstance(raw_results, dict):
+            results = raw_results.get('results') or []
+        elif isinstance(raw_results, list):
+            results = raw_results
+        else:
+            results = []
+        for sr in results:
+            if not isinstance(sr, dict):
+                continue
+            url = sr.get('url') or sr.get('link')
+            if url and not any(x.get('url') == url for x in sources):
+                sources.append({'source':'Groq web search','title':str(sr.get('title') or '')[:180], 'url':url})
+    return {'text': content, 'sources': sources[:24], 'provider':'groq-compound-mini'}
+"""
+if old not in text:
+    raise SystemExit('Bloc Groq à corriger introuvable dans quiz_factory.py')
+path.write_text(text.replace(old, new, 1), encoding='utf-8')
+PY
+
 cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
@@ -94,6 +138,7 @@ echo "Auteur local : $AUTHOR_MODEL"
 echo "Secours local : $REVIEW_MODEL"
 echo "Groq recherche : groq/compound-mini · 1 question · web_search uniquement · sortie max 1500 tokens"
 echo "Groq validation : openai/gpt-oss-120b · 1 question · sortie max 1500 tokens"
+echo "Parseur des sources Groq : compatible search_results.results"
 echo "Cooldown Groq transitoire : 60 s minimum"
 echo "Les clés FACTORY_TOKEN et GROQ_API_KEY existantes sont conservées."
 echo "Test : charge l'environnement puis lance /opt/grand-quiz-factory/quiz_factory.py --once"
