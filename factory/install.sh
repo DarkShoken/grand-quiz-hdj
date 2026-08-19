@@ -27,17 +27,7 @@ sudo -u "${SUDO_USER:-root}" ollama pull "$REVIEW_MODEL" || ollama pull "$REVIEW
 mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/quiz_factory_v2.py" "$INSTALL_DIR/quiz_factory.py"
 
-# Consolidation V3 : on corrige le script installé en un seul passage Python.
-# - BATCH_SIZE=1 est réellement respecté
-# - Compound Mini ne dispose que de web_search et le prompt exige une recherche réelle
-# - version Compound 2025-07-23 épinglée : Basic Web Search, plus légère que Advanced Search
-# - parsing robuste de search_results.results + repli sur les URLs de sortie
-# - aucun dossier Groq sans source n'est accepté : repli Wikipédia automatique
-# - GPT-OSS 120B sort du chemin bloquant : Gemma local juge le dossier Groq
-# - les erreurs HTTP Groq affichent leur corps exact ET la taille du payload client
-# - un 429 affiche les compteurs/réinitialisations utiles
-# - Qwen fonctionne sans thinking et avec un budget suffisant pour terminer son JSON
-# - les générations locales restent bornées pour éviter les dérives de plusieurs minutes
+# V3 stabilisée : toutes les corrections de production sont appliquées ici en un passage.
 python3 - "$INSTALL_DIR/quiz_factory.py" <<'PY'
 from pathlib import Path
 import sys
@@ -45,68 +35,99 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text(encoding='utf-8')
 
-replacements = [
-    (
-        "GROQ_RESEARCH_MODEL = os.getenv('GROQ_RESEARCH_MODEL', 'groq/compound')",
-        "GROQ_RESEARCH_MODEL = os.getenv('GROQ_RESEARCH_MODEL', 'groq/compound-mini')"
-    ),
-    (
-        "BATCH_SIZE = max(2, min(8, int(os.getenv('BATCH_SIZE', '6'))))",
-        "BATCH_SIZE = max(1, min(8, int(os.getenv('BATCH_SIZE', '1'))))"
-    ),
-    (
-        "return {'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type': 'application/json', 'Groq-Model-Version': 'latest'}",
-        "return {'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type': 'application/json', 'Groq-Model-Version': '2025-07-23'}"
-    ),
-    (
-        "'compound_custom': {'tools': {'enabled_tools': ['web_search','visit_website']}},",
-        "'compound_custom': {'tools': {'enabled_tools': ['web_search']}},\n        'search_settings': {'country': 'france'},"
-    ),
-    (
-        "Les réponses de l'auteur sont volontairement cachées. Recherche sur le Web pour résoudre chaque question indépendamment.",
-        "Les réponses de l'auteur sont volontairement cachées. Tu DOIS effectuer une vraie recherche Web avec l'outil web_search avant de répondre ; n'utilise pas seulement ta mémoire. Résous ensuite chaque question indépendamment."
-    ),
-    (
-        "'max_completion_tokens': 12000,",
-        "'max_completion_tokens': 1500,"
-    ),
-    (
-        "        'stream': False,\n        'format': qwen_schema(),",
-        "        'stream': False,\n        'think': False,\n        'format': qwen_schema(),"
-    ),
-    (
-        "'options': {'temperature':0.62,'top_p':0.82,'num_ctx':4096},",
-        "'options': {'temperature':0.45,'top_p':0.82,'num_ctx':4096,'num_predict':1200},"
-    ),
-    (
-        "'options':{'temperature':0,'num_ctx':8192},",
-        "'options':{'temperature':0,'num_ctx':8192,'num_predict':1400},"
-    ),
-    (
-        "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096},'keep_alive':0",
-        "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096,'num_predict':400},'keep_alive':0"
-    ),
-]
-for old, new in replacements:
-    text = text.replace(old, new)
+def replace_once(old, new, label):
+    global text
+    if old not in text:
+        raise SystemExit(f'Bloc introuvable: {label}')
+    text = text.replace(old, new, 1)
 
-old_qwen_parse = """    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=600)
-    r.raise_for_status()
-    data = json.loads(r.json().get('message',{}).get('content',''))
-"""
-new_qwen_parse = """    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=600)
-    r.raise_for_status()
-    ollama_reply = r.json()
-    content = ollama_reply.get('message',{}).get('content','')
-    try:
-        data = json.loads(content)
-    except json.JSONDecodeError as exc:
-        reason = ollama_reply.get('done_reason','inconnu')
-        raise RuntimeError(f'Qwen JSON incomplet/invalide (done_reason={reason}, chars={len(content)}): {exc}') from exc
-"""
-if old_qwen_parse not in text:
-    raise SystemExit('Bloc de parsing Qwen introuvable')
-text = text.replace(old_qwen_parse, new_qwen_parse, 1)
+# Réglages de base et compatibilité des catégories/types.
+replace_once(
+    "GROQ_RESEARCH_MODEL = os.getenv('GROQ_RESEARCH_MODEL', 'groq/compound')",
+    "GROQ_RESEARCH_MODEL = os.getenv('GROQ_RESEARCH_MODEL', 'groq/compound-mini')",
+    'modèle Groq'
+)
+replace_once(
+    "BATCH_SIZE = max(2, min(8, int(os.getenv('BATCH_SIZE', '6'))))",
+    "BATCH_SIZE = max(1, min(8, int(os.getenv('BATCH_SIZE', '1'))))",
+    'batch size'
+)
+replace_once(
+    "SLEEP_SECONDS = max(15, int(os.getenv('SLEEP_SECONDS', '45')))",
+    "SLEEP_SECONDS = max(60, int(os.getenv('SLEEP_SECONDS', '360')))",
+    'cadence daemon'
+)
+replace_once(
+    "GROQ_COOLDOWN_SECONDS = max(60, int(os.getenv('GROQ_COOLDOWN_SECONDS', '900')))",
+    "GROQ_COOLDOWN_SECONDS = max(60, int(os.getenv('GROQ_COOLDOWN_SECONDS', '60')))",
+    'cooldown Groq'
+)
+replace_once(
+    "NUMERIC_WEAK = {'Langue française','Littérature','Expressions françaises des régions','Anglais','Logique & devinettes'}",
+    "NUMERIC_WEAK = {'Langue française','Littérature','Expressions françaises des régions','Anglais','Logique & devinettes','Arbre généalogique'}",
+    'types incompatibles'
+)
+
+# Auteur local : sortie bornée, sans thinking, difficulté mieux explicitée.
+replace_once(
+    "        'stream': False,\n        'format': qwen_schema(),",
+    "        'stream': False,\n        'think': False,\n        'format': qwen_schema(),",
+    'think Qwen'
+)
+replace_once(
+    "'options': {'temperature':0.62,'top_p':0.82,'num_ctx':4096},",
+    "'options': {'temperature':0.45,'top_p':0.82,'num_ctx':4096,'num_predict':1200},",
+    'options Qwen'
+)
+replace_once(
+    "Catégorie exacte : {category}. Difficulté visée : {difficulty}. Type exact : {qtype}.",
+    "Catégorie exacte : {category}. Difficulté OBLIGATOIRE : {difficulty}. Type exact : {qtype}.\nÉchelle visée : Facile=70-95% de réussite, Moyen=35-69%, Difficile=8-34%. La candidate doit réellement correspondre au niveau demandé.",
+    'difficulté auteur'
+)
+replace_once(
+    "'intruder': 'INTRUS : 4 éléments du même domaine ; trois partagent une propriété claire, un seul est l’intrus.',",
+    "'intruder': 'INTRUS : 4 éléments comparables ; trois partagent une propriété exacte explicitée sans ambiguïté dans la question, un seul est l’intrus. Évite un intrus trivialement hors catégorie.',",
+    'règle intrus'
+)
+replace_once(
+    "        q['type'] = qtype\n        result.append(q)",
+    "        q['type'] = qtype\n        q['_requested_difficulty'] = difficulty\n        result.append(q)",
+    'difficulté candidate'
+)
+replace_once(
+    "        'id': q.get('id',''), 'category': q.get('category',''), 'type': q.get('type',''),\n        'question': q.get('question',''), 'options': q.get('options') or [],",
+    "        'id': q.get('id',''), 'category': q.get('category',''), 'type': q.get('type',''),\n        'difficulty_target': q.get('_requested_difficulty',''),\n        'question': q.get('question',''), 'options': q.get('options') or [],",
+    'difficulty blind candidate'
+)
+
+# Diagnostics Qwen.
+replace_once(
+    """    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=600)\n    r.raise_for_status()\n    data = json.loads(r.json().get('message',{}).get('content',''))\n""",
+    """    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=600)\n    r.raise_for_status()\n    ollama_reply = r.json()\n    content = ollama_reply.get('message',{}).get('content','')\n    try:\n        data = json.loads(content)\n    except json.JSONDecodeError as exc:\n        reason = ollama_reply.get('done_reason','inconnu')\n        raise RuntimeError(f'Qwen JSON incomplet/invalide (done_reason={reason}, chars={len(content)}): {exc}') from exc\n""",
+    'parsing Qwen'
+)
+
+# Groq : Compound Mini, Basic Web Search, une seule recherche, diagnostics complets.
+replace_once(
+    "return {'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type': 'application/json', 'Groq-Model-Version': 'latest'}",
+    "return {'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type': 'application/json', 'Groq-Model-Version': '2025-07-23'}",
+    'version Groq'
+)
+replace_once(
+    "'compound_custom': {'tools': {'enabled_tools': ['web_search','visit_website']}},",
+    "'compound_custom': {'tools': {'enabled_tools': ['web_search']}},\n        'search_settings': {'country': 'france'},",
+    'outils Groq'
+)
+replace_once(
+    "Les réponses de l'auteur sont volontairement cachées. Recherche sur le Web pour résoudre chaque question indépendamment.",
+    "Les réponses de l'auteur sont volontairement cachées. Tu DOIS effectuer une vraie recherche Web avec web_search avant de répondre. Résous chaque question indépendamment et signale aussi les imprécisions terminologiques à corriger.",
+    'prompt recherche Groq'
+)
+replace_once(
+    "'max_completion_tokens': 12000,",
+    "'max_completion_tokens': 1500,",
+    'budget Groq research'
+)
 
 old_cooldown = '''def mark_groq_cooldown(response=None):
     global groq_disabled_until
@@ -150,9 +171,7 @@ new_cooldown = '''def mark_groq_cooldown(response=None):
     suffix = (' · ' + ' · '.join(details)) if details else ''
     print(f'  Groq 429 → secours local ~{wait}s{suffix}', flush=True)
 '''
-if old_cooldown not in text:
-    raise SystemExit('Fonction mark_groq_cooldown introuvable')
-text = text.replace(old_cooldown, new_cooldown, 1)
+replace_once(old_cooldown, new_cooldown, 'cooldown détaillé')
 
 old_http = """    r = session.post('https://api.groq.com/openai/v1/chat/completions', headers=groq_headers(), json=payload, timeout=180)
     if r.status_code == 429:
@@ -174,9 +193,7 @@ new_http = """    payload_bytes = len(json.dumps(payload, ensure_ascii=False).en
         raise RuntimeError(f'Groq HTTP {r.status_code} (payload={payload_bytes} octets): {detail}')
     data = r.json()
 """
-if old_http not in text:
-    raise SystemExit('Bloc HTTP Groq research introuvable')
-text = text.replace(old_http, new_http, 1)
+replace_once(old_http, new_http, 'HTTP Groq')
 
 old_sources = '''    sources = []
     for tool in msg.get('executed_tools') or []:
@@ -208,20 +225,144 @@ new_sources = '''    sources = []
         if not results:
             for url in re.findall(r'https?://[^\\s<>\\]\\[(){}"\\\\]+', str(tool.get('output') or '')):
                 add_source(url)
-
     if not sources:
         for url in re.findall(r'https?://[^\\s<>\\]\\[(){}"\\\\]+', content):
             add_source(url)
-
     if not sources:
         raise RuntimeError('Groq web_search sans source exploitable')
-
     return {'text': content, 'sources': sources[:24], 'provider':'groq-compound-mini+gemma3'}
 '''
-if old_sources not in text:
-    raise SystemExit('Bloc de parsing Groq introuvable')
-text = text.replace(old_sources, new_sources, 1)
+replace_once(old_sources, new_sources, 'sources Groq')
 
+# Schéma final : échelles explicites et types multimédia supportés.
+replace_once(
+    "'type':{'type':'string','enum':['mcq','truefalse','numeric','free','buzzer','intruder','estimation','progressive']},",
+    "'type':{'type':'string','enum':['mcq','truefalse','numeric','free','buzzer','intruder','estimation','progressive','image_mystery','location']},",
+    'types review schema'
+)
+replace_once(
+    "'expected_success_pct':{'type':'number'}, 'quality_score':{'type':'integer'},",
+    "'expected_success_pct':{'type':'number','minimum':0,'maximum':100}, 'quality_score':{'type':'integer','minimum':0,'maximum':100},",
+    'échelles schema'
+)
+replace_once(
+    "if qtype not in {'mcq','truefalse','numeric','free','buzzer','intruder','estimation','progressive'}:",
+    "if qtype not in {'mcq','truefalse','numeric','free','buzzer','intruder','estimation','progressive','image_mystery','location'}:",
+    'types normalizer'
+)
+
+old_scores = """    pct = max(1, min(99, float(raw.get('expected_success_pct') or 0)))
+    quality = max(0, min(100, int(raw.get('quality_score') or 0)))
+    if pct < 8 or quality < 76:
+        return None
+    difficulty = 'Facile' if pct >= 70 else 'Moyen' if pct >= 35 else 'Difficile'
+"""
+new_scores = """    try:
+        pct = float(raw.get('expected_success_pct') or 0)
+    except Exception:
+        pct = 0
+    if 0 < pct <= 1:
+        pct *= 100
+    pct = max(1, min(99, pct))
+    try:
+        quality_raw = float(raw.get('quality_score') or 0)
+    except Exception:
+        quality_raw = 0
+    if 0 < quality_raw <= 1:
+        quality_raw *= 100
+    quality = max(0, min(100, int(round(quality_raw))))
+    if pct < 8 or quality < 76:
+        return None
+    difficulty = 'Facile' if pct >= 70 else 'Moyen' if pct >= 35 else 'Difficile'
+    requested = str(evidence.get('requested_difficulty') or '').strip()
+    if requested and difficulty != requested:
+        return None
+"""
+replace_once(old_scores, new_scores, 'normalisation scores/difficulté')
+
+replace_once(
+    "    if len(question) < 10 or not explanation or not topic_key:\n        return None",
+    "    if len(question) < 10 or not explanation or not topic_key:\n        return None\n    if re.search(r'\\b(dossier factuel|documents? fournis?|sources? (?:confirment|indiquent)|recherche web)\\b', explanation, re.I):\n        return None",
+    'explication joueur'
+)
+
+# Gemma devient rédacteur final : précision éditoriale + difficulté obligatoire + échelles 0-100.
+old_local = '''def local_finalize(category, candidates, evidence):
+    prompt = """Tu es un vérificateur indépendant. Les réponses de l'auteur sont cachées.
+Utilise UNIQUEMENT les documents fournis. Rejette toute question dont la réponse n'est pas explicitement démontrée, toute ambiguïté et toute information mouvante.
+Pour les indices progressifs, fournis exactement 4 ou 5 indices vrais du plus difficile au plus évident, sans donner la réponse.
+Retourne uniquement le JSON conforme au schéma.
+DOSSIER:
+""" + evidence['text'] + "\nQUESTIONS:\n" + json.dumps(blind_candidates(candidates), ensure_ascii=False)
+    payload = {
+        'model': LOCAL_REVIEW_MODEL,
+        'messages':[{'role':'user','content':prompt}],
+        'stream':False,
+        'format':review_schema(),
+        'options':{'temperature':0,'num_ctx':8192},
+        'keep_alive':0,
+    }
+    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=900)
+    r.raise_for_status()
+    parsed = json.loads(r.json().get('message',{}).get('content',''))
+    return [q for q in (normalize_review(x, category, evidence) for x in parsed.get('reviews',[])) if q]
+'''
+new_local = '''def local_finalize(category, candidates, evidence):
+    requested = candidates[0].get('_requested_difficulty','') if candidates else ''
+    evidence = dict(evidence)
+    evidence['requested_difficulty'] = requested
+    ranges = {'Facile':(70,95), 'Moyen':(35,69), 'Difficile':(8,34)}
+    lo, hi = ranges.get(requested, (8,95))
+    prompt = f"""Tu es le RÉDACTEUR EN CHEF FINAL d'un quiz français pour adultes. Les réponses de l'auteur sont cachées.
+Utilise UNIQUEMENT le dossier factuel fourni pour établir les faits et les réponses.
+
+DIFFICULTÉ OBLIGATOIRE : {requested or 'non précisée'} ; expected_success_pct doit être compris entre {lo} et {hi}.
+Si la candidate est hors niveau, tu peux reformuler la question ou améliorer les distracteurs en restant STRICTEMENT sur les faits démontrés. Si ce n'est pas possible sans inventer, approved=false.
+
+RÈGLES ÉDITORIALES :
+- Corrige toute imprécision terminologique, grammaire maladroite ou formulation ambiguë avant d'approuver.
+- La question finale doit être naturelle à l'oral, précise et intéressante.
+- L'explication est destinée AUX JOUEURS : explique directement le fait en 1 ou 2 phrases. Ne mentionne jamais dossier, document, source, recherche Web ni processus de vérification.
+- Intrus : propriété commune exacte et explicite, quatre options comparables, intrus non trivial.
+- QCM : exactement 4 options homogènes et une seule correcte.
+- Vrai/faux : answer=true ou false.
+- Numérique/estimation : valeur stable et unité si nécessaire.
+- Libre/buzzer : réponse courte unique ; accepted_answers seulement variantes équivalentes.
+- Progressive : exactement 4 ou 5 indices vrais, non redondants, du plus difficile au plus évident, sans contenir la réponse.
+- image_mystery/location : conserve le type et une réponse courte unique.
+
+ÉCHELLES OBLIGATOIRES 0-100 :
+- expected_success_pct est un POURCENTAGE entre 0 et 100 ; jamais 0.95 pour 95%.
+- 70-95=Facile ; 35-69=Moyen ; 8-34=Difficile ; <8=trop obscur.
+- quality_score est une NOTE ENTIÈRE 0-100 : 90-100 excellent, 80-89 bon, 76-79 acceptable, <76 rejet.
+- Ne mets jamais quality_score=0 seulement parce que la difficulté initiale était mauvaise : réécris si possible, sinon approved=false.
+
+approved=true uniquement si la version finale est factuellement démontrée, univoque, bien formulée ET dans la difficulté demandée.
+Retourne uniquement le JSON conforme au schéma.
+DOSSIER FACTUEL :
+""" + evidence['text'] + "\nCANDIDATE :\n" + json.dumps(blind_candidates(candidates), ensure_ascii=False)
+    payload = {
+        'model': LOCAL_REVIEW_MODEL,
+        'messages':[{'role':'user','content':prompt}],
+        'stream':False,
+        'format':review_schema(),
+        'options':{'temperature':0,'num_ctx':8192,'num_predict':1400},
+        'keep_alive':0,
+    }
+    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=900)
+    r.raise_for_status()
+    reply = r.json()
+    content = reply.get('message',{}).get('content','')
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError as exc:
+        reason = reply.get('done_reason','inconnu')
+        raise RuntimeError(f'Gemma JSON incomplet/invalide (done_reason={reason}, chars={len(content)}): {exc}') from exc
+    return [q for q in (normalize_review(x, category, evidence) for x in parsed.get('reviews',[])) if q]
+'''
+replace_once(old_local, new_local, 'local_finalize V3')
+
+# Le chemin texte utilise une seule requête cloud, puis Gemma local.
 old_review = '''            evidence = groq_research(candidates)
             reviewed = groq_finalize(category, candidates, evidence)
             print(f'  Vérification Groq : {len(reviewed)}/{len(candidates)} retenues · {len(evidence["sources"])} sources', flush=True)
@@ -232,10 +373,9 @@ new_review = '''            evidence = groq_research(candidates)
             print(f'  Vérification Groq Web + Gemma local : {len(reviewed)}/{len(candidates)} retenues · {len(evidence["sources"])} sources', flush=True)
             return reviewed
 '''
-if old_review not in text:
-    raise SystemExit('Bloc review_text Groq introuvable')
-text = text.replace(old_review, new_review, 1)
+replace_once(old_review, new_review, 'review_text V3')
 
+# Média : vision et finalisation restent locales.
 old_media = '''    if groq_available():
         try:
             reviewed = groq_finalize(candidate['category'], [candidate], evidence)
@@ -244,15 +384,17 @@ old_media = '''    if groq_available():
     else:
         reviewed = local_finalize(candidate['category'], [candidate], evidence)
 '''
-new_media = '''    reviewed = local_finalize(candidate['category'], [candidate], evidence)
-'''
-if old_media not in text:
-    raise SystemExit('Bloc review_media introuvable')
-text = text.replace(old_media, new_media, 1)
+replace_once(old_media, "    reviewed = local_finalize(candidate['category'], [candidate], evidence)\n", 'review_media local')
+replace_once(
+    "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096},'keep_alive':0",
+    "'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096,'num_predict':400},'keep_alive':0",
+    'vision bornée'
+)
 
 path.write_text(text, encoding='utf-8')
 PY
 
+python3 -m py_compile "$INSTALL_DIR/quiz_factory.py"
 cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
@@ -264,24 +406,20 @@ else
   grep -q '^LOCAL_REVIEW_MODEL=' "$ENV_FILE" || echo 'LOCAL_REVIEW_MODEL=gemma3:4b' >> "$ENV_FILE"
   grep -q '^GROQ_API_KEY=' "$ENV_FILE" || echo 'GROQ_API_KEY=' >> "$ENV_FILE"
   grep -q '^GROQ_RESEARCH_MODEL=' "$ENV_FILE" || echo 'GROQ_RESEARCH_MODEL=groq/compound-mini' >> "$ENV_FILE"
-  grep -q '^GROQ_COOLDOWN_SECONDS=' "$ENV_FILE" || echo 'GROQ_COOLDOWN_SECONDS=60' >> "$ENV_FILE"
 fi
 
-if grep -q '^BATCH_SIZE=' "$ENV_FILE"; then
-  sed -i 's/^BATCH_SIZE=.*/BATCH_SIZE=1/' "$ENV_FILE"
-else
-  echo 'BATCH_SIZE=1' >> "$ENV_FILE"
-fi
-if grep -q '^GROQ_RESEARCH_MODEL=' "$ENV_FILE"; then
-  sed -i 's#^GROQ_RESEARCH_MODEL=.*#GROQ_RESEARCH_MODEL=groq/compound-mini#' "$ENV_FILE"
-else
-  echo 'GROQ_RESEARCH_MODEL=groq/compound-mini' >> "$ENV_FILE"
-fi
-if grep -q '^GROQ_COOLDOWN_SECONDS=' "$ENV_FILE"; then
-  sed -i 's/^GROQ_COOLDOWN_SECONDS=.*/GROQ_COOLDOWN_SECONDS=60/' "$ENV_FILE"
-else
-  echo 'GROQ_COOLDOWN_SECONDS=60' >> "$ENV_FILE"
-fi
+set_env() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    sed -i "s#^${key}=.*#${key}=${value}#" "$ENV_FILE"
+  else
+    echo "${key}=${value}" >> "$ENV_FILE"
+  fi
+}
+set_env BATCH_SIZE 1
+set_env GROQ_RESEARCH_MODEL groq/compound-mini
+set_env GROQ_COOLDOWN_SECONDS 60
+set_env SLEEP_SECONDS 360
 chmod 600 "$ENV_FILE"
 
 cat > "$SERVICE_FILE" <<'EOF'
@@ -307,15 +445,12 @@ EOF
 systemctl daemon-reload
 
 echo
-echo "Installation / mise à jour V3 terminée."
+echo "Installation / mise à jour V3 qualité terminée."
 echo "Auteur : Qwen3 4B local · think=false · num_predict=1200"
-echo "Recherche factuelle : Groq Compound Mini 2025-07-23 · Basic Web Search · 1500 tokens max"
-echo "Validation finale : Gemma 3 4B local · num_predict=1400"
-echo "Vision locale : Gemma 3 4B · num_predict=400"
-echo "Secours sans source Groq : Wikipédia + Gemma 3 local"
-echo "BATCH_SIZE réellement appliqué : 1"
-echo "Les erreurs HTTP Groq affichent le corps exact et la taille du payload client."
-echo "Les erreurs JSON Qwen indiquent done_reason et longueur de sortie."
-echo "Les 429 affichent leur cause et les compteurs Groq."
-echo "Les clés FACTORY_TOKEN et GROQ_API_KEY existantes sont conservées."
+echo "Recherche : Groq Compound Mini 2025-07-23 · Basic Web Search · 1500 tokens max"
+echo "Validation : Gemma 3 4B local · difficulté cible obligatoire · score 0-100 · num_predict=1400"
+echo "Éditorial : reformulation précise, explication joueur, intrus non trivial"
+echo "Types image_mystery/location acceptés par le schéma final"
+echo "BATCH_SIZE=1 · SLEEP_SECONDS=360 · GROQ_COOLDOWN_SECONDS=60"
+echo "Le service n'est pas activé automatiquement : on valide encore quelques questions avant daemon."
 echo
