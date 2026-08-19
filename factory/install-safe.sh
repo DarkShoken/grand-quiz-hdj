@@ -103,21 +103,23 @@ if start < 0 or end <= start:
     raise SystemExit('Fonction local_finalize introuvable pour le quality gate')
 
 segment = text[start:end]
-old = "    return [q for q in (normalize_review(x, category, evidence) for x in parsed.get('reviews',[])) if q]\n"
-new = """    preliminary = [q for q in (normalize_review(x, category, evidence) for x in parsed.get('reviews',[])) if q]
+
+# L'injection est idempotente. Si elle existe déjà, on ne touche à rien.
+if 'adversarial_review(q, evidence' not in segment:
+    marker = "    return [q for q in (normalize_review(x, category, evidence) for x in parsed.get('reviews',[])) if q]"
+    pos = segment.rfind(marker)
+    if pos < 0:
+        raise SystemExit('Retour local_finalize introuvable pour le quality gate')
+
+    replacement = """    preliminary = [q for q in (normalize_review(x, category, evidence) for x in parsed.get('reviews',[])) if q]
     accepted = []
     for q in preliminary:
         if adversarial_review(q, evidence, OLLAMA_URL, LOCAL_REVIEW_MODEL, session):
             accepted.append(q)
         else:
-            print(f'  Quality gate adversarial : rejet de {q.get(\"id\", \"?\")}', flush=True)
-    return accepted
-"""
-if old not in segment:
-    if 'adversarial_review(q, evidence' not in segment:
-        raise SystemExit('Retour local_finalize introuvable pour le quality gate')
-else:
-    segment = segment.replace(old, new, 1)
+            print(f'  Quality gate adversarial : rejet de {q.get("id", "?")}', flush=True)
+    return accepted"""
+    segment = segment[:pos] + replacement + segment[pos + len(marker):]
     text = text[:start] + segment + text[end:]
 
 path.write_text(text, encoding='utf-8')
