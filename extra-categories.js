@@ -16,6 +16,10 @@
     'Automobile',
     'Agriculture',
     'Expressions françaises des régions',
+    'Architecture',
+    'BTP & travaux',
+    'Jeux olympiques',
+    'Célébrités',
   ];
 
   const cleaned = categories
