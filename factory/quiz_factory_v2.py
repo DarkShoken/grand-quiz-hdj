@@ -159,6 +159,7 @@ Sujets déjà présents à éviter : {json.dumps(topics[-180:], ensure_ascii=Fal
         'stream': False,
         'format': qwen_schema(),
         'options': {'temperature':0.62,'top_p':0.82,'num_ctx':4096},
+        'keep_alive': 0,
     }
     r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=600)
     r.raise_for_status()
@@ -388,6 +389,7 @@ DOSSIER:
         'stream':False,
         'format':review_schema(),
         'options':{'temperature':0,'num_ctx':8192},
+        'keep_alive':0,
     }
     r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=900)
     r.raise_for_status()
@@ -450,7 +452,7 @@ Retourne JSON avec approved, answer, explanation."""
     }
     r = session.post(f'{OLLAMA_URL}/api/chat', json={
         'model':LOCAL_REVIEW_MODEL,'messages':[{'role':'user','content':prompt,'images':[image_b64]}],
-        'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096}
+        'stream':False,'format':schema,'options':{'temperature':0,'num_ctx':4096},'keep_alive':0
     }, timeout=900)
     r.raise_for_status()
     return json.loads(r.json().get('message',{}).get('content',''))
