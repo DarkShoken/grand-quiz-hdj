@@ -26,9 +26,10 @@ sudo -u "${SUDO_USER:-root}" ollama pull "$REVIEW_MODEL" || ollama pull "$REVIEW
 
 mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/quiz_factory_v2.py" "$INSTALL_DIR/quiz_factory.py"
-# groq/compound annonce actuellement 8192 tokens de sortie max. 8192 suffit aussi
-# largement à la passe finale GPT-OSS pour un lot de quelques questions.
-sed -i "s/'max_completion_tokens': 12000/'max_completion_tokens': 8192/g" "$INSTALL_DIR/quiz_factory.py"
+# Le Free Plan Groq est bien plus stable avec de petits lots : Compound peut
+# orchestrer plusieurs appels internes, et GPT-OSS 120B est limité à 8K TPM.
+# 2500 tokens de sortie suffisent largement pour rechercher/finaliser 3 questions.
+sed -i "s/'max_completion_tokens': 12000/'max_completion_tokens': 2500/g" "$INSTALL_DIR/quiz_factory.py"
 cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
@@ -36,13 +37,24 @@ python3 -m venv "$INSTALL_DIR/venv"
 
 if [ ! -f "$ENV_FILE" ]; then
   cp "$SCRIPT_DIR/grand-quiz-factory.env.example" "$ENV_FILE"
-  chmod 600 "$ENV_FILE"
 else
   grep -q '^LOCAL_REVIEW_MODEL=' "$ENV_FILE" || echo 'LOCAL_REVIEW_MODEL=gemma3:4b' >> "$ENV_FILE"
   grep -q '^GROQ_API_KEY=' "$ENV_FILE" || echo 'GROQ_API_KEY=' >> "$ENV_FILE"
   grep -q '^GROQ_RESEARCH_MODEL=' "$ENV_FILE" || echo 'GROQ_RESEARCH_MODEL=groq/compound' >> "$ENV_FILE"
   grep -q '^GROQ_REVIEW_MODEL=' "$ENV_FILE" || echo 'GROQ_REVIEW_MODEL=openai/gpt-oss-120b' >> "$ENV_FILE"
-  grep -q '^GROQ_COOLDOWN_SECONDS=' "$ENV_FILE" || echo 'GROQ_COOLDOWN_SECONDS=900' >> "$ENV_FILE"
+  grep -q '^GROQ_COOLDOWN_SECONDS=' "$ENV_FILE" || echo 'GROQ_COOLDOWN_SECONDS=60' >> "$ENV_FILE"
+fi
+# Valeurs volontairement imposées pour rester confortablement dans les limites
+# gratuites. Les secrets et autres réglages existants sont conservés.
+if grep -q '^BATCH_SIZE=' "$ENV_FILE"; then
+  sed -i 's/^BATCH_SIZE=.*/BATCH_SIZE=3/' "$ENV_FILE"
+else
+  echo 'BATCH_SIZE=3' >> "$ENV_FILE"
+fi
+if grep -q '^GROQ_COOLDOWN_SECONDS=' "$ENV_FILE"; then
+  sed -i 's/^GROQ_COOLDOWN_SECONDS=.*/GROQ_COOLDOWN_SECONDS=60/' "$ENV_FILE"
+else
+  echo 'GROQ_COOLDOWN_SECONDS=60' >> "$ENV_FILE"
 fi
 chmod 600 "$ENV_FILE"
 
@@ -72,10 +84,10 @@ echo
 echo "Installation / mise à jour terminée."
 echo "Auteur local : $AUTHOR_MODEL"
 echo "Secours local : $REVIEW_MODEL"
-echo "Groq recherche : groq/compound (sortie limitée à 8192 tokens)"
-echo "Groq validation : openai/gpt-oss-120b"
-echo "Ajoute GROQ_API_KEY dans $ENV_FILE pour activer Groq Compound + GPT-OSS 120B."
-echo "Sans clé Groq, la fabrique continue quand même avec Wikipédia + Gemma 3 local."
+echo "Groq recherche : groq/compound · lots de 3 · sortie max 2500 tokens"
+echo "Groq validation : openai/gpt-oss-120b · sortie max 2500 tokens"
+echo "Cooldown Groq transitoire : 60 s minimum"
+echo "Les clés FACTORY_TOKEN et GROQ_API_KEY existantes sont conservées."
 echo "Test : charge l'environnement puis lance /opt/grand-quiz-factory/quiz_factory.py --once"
 echo "Logs : journalctl -u grand-quiz-factory -f"
 echo
