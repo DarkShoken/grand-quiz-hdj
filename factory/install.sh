@@ -30,10 +30,11 @@ cp "$SCRIPT_DIR/quiz_factory_v2.py" "$INSTALL_DIR/quiz_factory.py"
 # Consolidation V3 : on corrige le script installé en un seul passage Python.
 # - BATCH_SIZE=1 est réellement respecté
 # - Compound Mini ne dispose que de web_search et le prompt exige une recherche réelle
+# - version Compound 2025-07-23 épinglée : Basic Web Search, plus légère que Advanced Search
 # - parsing robuste de search_results.results + repli sur les URLs de sortie
 # - aucun dossier Groq sans source n'est accepté : repli Wikipédia automatique
 # - GPT-OSS 120B sort du chemin bloquant : Gemma local juge le dossier Groq
-# - les erreurs HTTP Groq affichent maintenant leur corps exact
+# - les erreurs HTTP Groq affichent leur corps exact ET la taille du payload client
 # - un 429 affiche les compteurs/réinitialisations utiles
 # - Qwen fonctionne sans thinking et avec un budget suffisant pour terminer son JSON
 # - les générations locales restent bornées pour éviter les dérives de plusieurs minutes
@@ -52,6 +53,10 @@ replacements = [
     (
         "BATCH_SIZE = max(2, min(8, int(os.getenv('BATCH_SIZE', '6'))))",
         "BATCH_SIZE = max(1, min(8, int(os.getenv('BATCH_SIZE', '1'))))"
+    ),
+    (
+        "return {'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type': 'application/json', 'Groq-Model-Version': 'latest'}",
+        "return {'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type': 'application/json', 'Groq-Model-Version': '2025-07-23'}"
     ),
     (
         "'compound_custom': {'tools': {'enabled_tools': ['web_search','visit_website']}},",
@@ -156,7 +161,8 @@ old_http = """    r = session.post('https://api.groq.com/openai/v1/chat/completi
     r.raise_for_status()
     data = r.json()
 """
-new_http = """    r = session.post('https://api.groq.com/openai/v1/chat/completions', headers=groq_headers(), json=payload, timeout=180)
+new_http = """    payload_bytes = len(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+    r = session.post('https://api.groq.com/openai/v1/chat/completions', headers=groq_headers(), json=payload, timeout=180)
     if r.status_code == 429:
         mark_groq_cooldown(r)
         raise RuntimeError('groq_quota')
@@ -165,7 +171,7 @@ new_http = """    r = session.post('https://api.groq.com/openai/v1/chat/completi
             detail = json.dumps(r.json(), ensure_ascii=False)[:1200]
         except Exception:
             detail = (r.text or '')[:1200]
-        raise RuntimeError(f'Groq HTTP {r.status_code}: {detail}')
+        raise RuntimeError(f'Groq HTTP {r.status_code} (payload={payload_bytes} octets): {detail}')
     data = r.json()
 """
 if old_http not in text:
@@ -303,12 +309,12 @@ systemctl daemon-reload
 echo
 echo "Installation / mise à jour V3 terminée."
 echo "Auteur : Qwen3 4B local · think=false · num_predict=1200"
-echo "Recherche factuelle : Groq Compound Mini · web_search explicitement demandé · 1500 tokens max"
+echo "Recherche factuelle : Groq Compound Mini 2025-07-23 · Basic Web Search · 1500 tokens max"
 echo "Validation finale : Gemma 3 4B local · num_predict=1400"
 echo "Vision locale : Gemma 3 4B · num_predict=400"
 echo "Secours sans source Groq : Wikipédia + Gemma 3 local"
 echo "BATCH_SIZE réellement appliqué : 1"
-echo "Les erreurs HTTP Groq affichent désormais le corps exact de la réponse."
+echo "Les erreurs HTTP Groq affichent le corps exact et la taille du payload client."
 echo "Les erreurs JSON Qwen indiquent done_reason et longueur de sortie."
 echo "Les 429 affichent leur cause et les compteurs Groq."
 echo "Les clés FACTORY_TOKEN et GROQ_API_KEY existantes sont conservées."
