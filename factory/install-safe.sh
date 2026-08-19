@@ -28,7 +28,6 @@ model_present() {
   ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$model"
 }
 
-missing=0
 for model in "$AUTHOR_MODEL" "$REVIEW_MODEL"; do
   if model_present "$model"; then
     echo "✓ Modèle déjà présent : $model — aucun téléchargement"
@@ -38,20 +37,30 @@ for model in "$AUTHOR_MODEL" "$REVIEW_MODEL"; do
       echo "ERREUR : impossible de télécharger $model et il n'est pas disponible localement." >&2
       exit 1
     fi
-    missing=1
   fi
 done
 
-# install.sh historique force encore deux `ollama pull` à chaque exécution.
-# On exécute une copie temporaire dans LE MÊME DOSSIER afin que SCRIPT_DIR reste correct,
-# en retirant uniquement ces deux lignes. Tout le reste (py_compile, venv, service, env) est inchangé.
+# On exécute une copie temporaire de l'installateur dans le même dossier afin que
+# SCRIPT_DIR reste correct. Cette copie :
+# 1) ne retélécharge pas les modèles déjà présents ;
+# 2) corrige l'échappement du séparateur CANDIDATE dans le générateur Python.
 TMP="$(mktemp "$SCRIPT_DIR/.install-safe.XXXXXX")"
 trap 'rm -f "$TMP"' EXIT
 
 python3 - "$BASE_INSTALL" "$TMP" <<'PY'
 from pathlib import Path
 import sys
+
 src = Path(sys.argv[1]).read_text(encoding='utf-8')
+
+# Dans install.sh, new_local est lui-même une chaîne Python qui génère une autre
+# chaîne Python. Il faut donc doubler les antislashs pour que le fichier final
+# contienne "\n" au lieu d'un retour à la ligne au milieu d'un littéral.
+src = src.replace(
+    '"\\nCANDIDATE :\\n"',
+    '"\\\\nCANDIDATE :\\\\n"',
+)
+
 lines = []
 for line in src.splitlines():
     if 'ollama pull "$AUTHOR_MODEL"' in line:
@@ -59,8 +68,10 @@ for line in src.splitlines():
     if 'ollama pull "$REVIEW_MODEL"' in line:
         continue
     lines.append(line)
+
 Path(sys.argv[2]).write_text('\n'.join(lines) + '\n', encoding='utf-8')
 PY
 
 chmod +x "$TMP"
+bash -n "$TMP"
 bash "$TMP"
