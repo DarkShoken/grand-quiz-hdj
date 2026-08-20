@@ -40,7 +40,9 @@ set_env() {
 ensure_env TAVILY_API_KEY ""
 set_env SEARXNG_URL "http://127.0.0.1:8888"
 set_env MIN_SOURCE_DOMAINS "2"
-set_env SOURCE_FETCH_LIMIT "4"
+set_env SOURCE_FETCH_LIMIT "3"
+set_env SEARCH_RESULT_LIMIT "8"
+set_env PAGE_TEXT_LIMIT "3500"
 ensure_env GEMINI_API_KEY ""
 set_env GEMINI_RESEARCH_MODEL "gemini-3.5-flash-lite"
 set_env GEMINI_GOOGLE_SEARCH_ENABLED "0"
@@ -66,8 +68,7 @@ for import_line in (
     if import_line not in text:
         text = text.replace(marker, marker + import_line, 1)
 
-# L'identifiant interne est toujours généré par notre code : on ne fait plus confiance
-# à un ID inventé par Qwen/Gemma (ex. https://example.com/q1).
+# L'identifiant interne est toujours généré par notre code.
 text = text.replace(
     "q['id'] = q.get('id') or f'qwen-{int(time.time())}-{i}'",
     "q['id'] = f'qwen-{int(time.time())}-{i}'",
@@ -80,17 +81,45 @@ if start < 0 or end <= start:
 
 segment = text[start:end]
 
-# Sortie Gemma plus compacte et marge suffisante pour le JSON final.
+# Une candidate en entrée = exactement une review en sortie. On contraint aussi le
+# pourcentage à un entier 0-100 pour empêcher les sorties 0.75/0.95 ambiguës.
+if "final_schema = review_schema()" not in segment:
+    schema_anchor = "    evidence['requested_difficulty'] = requested\n"
+    schema_block = '''    final_schema = review_schema()
+    try:
+        reviews_schema = final_schema['properties']['reviews']
+        reviews_schema['minItems'] = len(candidates)
+        reviews_schema['maxItems'] = len(candidates)
+        pct_schema = reviews_schema['items']['properties']['expected_success_pct']
+        pct_schema['type'] = 'integer'
+        pct_schema['minimum'] = 0
+        pct_schema['maximum'] = 100
+    except Exception:
+        pass
+'''
+    if schema_anchor not in segment:
+        raise SystemExit("Ancre schéma Gemma introuvable")
+    segment = segment.replace(schema_anchor, schema_anchor + schema_block, 1)
+segment = segment.replace("'format':review_schema(),", "'format':final_schema,", 1)
+
+# Sortie compacte. Avec une seule review, 1500 tokens suffisent normalement ;
+# un retry à 2200 reste disponible seulement en cas de troncature.
 segment = segment.replace(
     "Retourne uniquement le JSON conforme au schéma.",
-    "Retourne uniquement un JSON COMPACT conforme au schéma. Une seule review par candidate. "
-    "Question <=130 caractères, explication <=260 caractères, topic_key <=80 caractères, "
+    "Retourne uniquement un JSON COMPACT conforme au schéma. EXACTEMENT une review par candidate. "
+    "Question <=130 caractères, explication <=220 caractères, topic_key <=80 caractères, "
     "accepted_answers <=4 et clues <=5. Ne recopie jamais le dossier factuel.",
 )
 segment = segment.replace(
     "'options':{'temperature':0,'num_ctx':8192,'num_predict':1400},",
-    "'options':{'temperature':0,'num_ctx':8192,'num_predict':2200},",
+    "'options':{'temperature':0,'num_ctx':8192,'num_predict':1500},",
 )
+segment = segment.replace(
+    "'options':{'temperature':0,'num_ctx':8192,'num_predict':2200},",
+    "'options':{'temperature':0,'num_ctx':8192,'num_predict':1500},",
+)
+segment = segment.replace("'keep_alive':0,", "'keep_alive':'5m',", 1)
+segment = segment.replace("retry_payload['options']['num_predict'] = 3000", "retry_payload['options']['num_predict'] = 2200")
 
 # Si Gemma atteint malgré tout la limite, une seule seconde tentative plus large est faite.
 old_parse = '''    r = session.post(f'{OLLAMA_URL}/api/chat', json=payload, timeout=900)
@@ -118,10 +147,10 @@ new_parse = '''    def _run_finalizer(call_payload):
             print(f'  Gemma rédacteur : sortie tronquée à {len(content)} caractères → nouvelle tentative compacte', flush=True)
             retry_payload = dict(payload)
             retry_payload['options'] = dict(payload.get('options') or {})
-            retry_payload['options']['num_predict'] = 3000
+            retry_payload['options']['num_predict'] = 2200
             retry_payload['messages'] = [{
                 'role':'user',
-                'content': prompt + "\\n\\nATTENTION : la réponse précédente a été tronquée. Réponds beaucoup plus brièvement. JSON uniquement, aucune prose hors JSON, explication maximum 180 caractères."
+                'content': prompt + "\\n\\nATTENTION : la réponse précédente a été tronquée. Réponds beaucoup plus brièvement. JSON uniquement, aucune prose hors JSON, explication maximum 160 caractères."
             }]
             reply, content = _run_finalizer(retry_payload)
             try:
@@ -154,9 +183,16 @@ if "adversarial_review(q, evidence" not in segment:
     return accepted'''
     segment = segment[:pos] + replacement + segment[pos + len(marker_return):]
 
-# Diagnostics du PREMIER Gemma : jusqu'ici les 0/1 avant le quality gate étaient muets.
+# Diagnostics du premier Gemma.
 old_preliminary = "    preliminary = [q for q in (normalize_review(x, category, evidence) for x in parsed.get('reviews',[])) if q]\n"
 new_preliminary = '''    raw_reviews = parsed.get('reviews', []) or []
+    if len(raw_reviews) != len(candidates):
+        print(
+            f'  Gemma rédaction détail [?] : REJET cardinalite_reviews · '
+            f'attendu={len(candidates)} · obtenu={len(raw_reviews)}',
+            flush=True,
+        )
+        return []
     preliminary = []
     for idx, raw_item in enumerate(raw_reviews):
         if not isinstance(raw_item, dict):
@@ -185,7 +221,21 @@ new_preliminary = '''    raw_reviews = parsed.get('reviews', []) or []
 '''
 if old_preliminary in segment:
     segment = segment.replace(old_preliminary, new_preliminary, 1)
-elif "Gemma rédaction détail" not in segment:
+elif "Gemma rédaction détail" in segment:
+    if "REJET cardinalite_reviews" not in segment:
+        anchor = "    raw_reviews = parsed.get('reviews', []) or []\n"
+        cardinality = '''    if len(raw_reviews) != len(candidates):
+        print(
+            f'  Gemma rédaction détail [?] : REJET cardinalite_reviews · '
+            f'attendu={len(candidates)} · obtenu={len(raw_reviews)}',
+            flush=True,
+        )
+        return []
+'''
+        if anchor not in segment:
+            raise SystemExit("Ancre raw_reviews introuvable")
+        segment = segment.replace(anchor, anchor + cardinality, 1)
+else:
     raise SystemExit("Bloc preliminary introuvable pour les diagnostics V4")
 
 text = text[:start] + segment + text[end:]
@@ -223,13 +273,13 @@ python3 -m py_compile "$TARGET"
 echo
 echo "Runtime V4 gratuit installé :"
 echo "- recherche principale : SearXNG local"
-echo "- lecture directe : jusqu'à 4 pages sources par candidate"
+echo "- contexte Web : 8 résultats max · 3 pages lues · 3500 caractères/page"
 echo "- secours : Tavily Basic si une clé gratuite est configurée"
-echo "- Gemini 3.5 Flash-Lite conservé optionnel ; Google Search désactivé en Free Tier"
 echo "- minimum : 2 domaines Web distincts"
-echo "- rédaction finale : Gemma 3 local · JSON compact · retry automatique si tronqué"
+echo "- rédaction finale : Gemma 3 local · exactement 1 review/candidate · pct entier 0-100"
+echo "- performance : Gemma conservé en mémoire entre rédaction et contrôle adversarial"
+echo "- retry : 2200 tokens uniquement si JSON tronqué"
 echo "- diagnostics : rejets du rédacteur ET quality gate visibles"
 echo "- identifiants : générés localement, jamais acceptés depuis le modèle"
-echo "- contrôle adversarial + difficulté : Gemma 3 local"
-echo "- Groq n'est plus utilisé dans le chemin texte normal"
+echo "- Groq/Gemini Search absents du chemin texte gratuit normal"
 echo
