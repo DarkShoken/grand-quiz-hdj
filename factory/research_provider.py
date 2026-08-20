@@ -12,7 +12,9 @@ GEMINI_GOOGLE_SEARCH_ENABLED = os.getenv("GEMINI_GOOGLE_SEARCH_ENABLED", "0").st
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:8888").strip().rstrip("/")
 MIN_SOURCE_DOMAINS = max(1, int(os.getenv("MIN_SOURCE_DOMAINS", "2")))
-SOURCE_FETCH_LIMIT = max(0, min(6, int(os.getenv("SOURCE_FETCH_LIMIT", "4"))))
+SOURCE_FETCH_LIMIT = max(0, min(6, int(os.getenv("SOURCE_FETCH_LIMIT", "3"))))
+SEARCH_RESULT_LIMIT = max(4, min(12, int(os.getenv("SEARCH_RESULT_LIMIT", "8"))))
+PAGE_TEXT_LIMIT = max(1800, min(6000, int(os.getenv("PAGE_TEXT_LIMIT", "3500"))))
 
 SOCIAL_HOSTS = {
     "facebook.com", "www.facebook.com", "m.facebook.com",
@@ -102,13 +104,13 @@ def _extract_page_text(session, url):
         ctype = (response.headers.get("content-type") or "").lower()
         if "text/html" not in ctype and "application/xhtml+xml" not in ctype:
             return ""
-        raw = response.text[:250000]
+        raw = response.text[:200000]
         parser = _ReadableHTML()
         parser.feed(raw)
         text = html.unescape("".join(parser.parts))
         text = re.sub(r"[ \t]+", " ", text)
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
-        return text[:6000]
+        return text[:PAGE_TEXT_LIMIT]
     except Exception:
         return ""
 
@@ -172,7 +174,7 @@ def _searxng_research(blind, session):
             raise ResearchUnavailable(f"SearXNG JSON invalide: {exc}") from exc
 
         docs = []
-        for result in (data.get("results") or [])[:12]:
+        for result in (data.get("results") or [])[:SEARCH_RESULT_LIMIT]:
             if not isinstance(result, dict):
                 continue
             url = str(result.get("url") or "").strip()
@@ -184,7 +186,7 @@ def _searxng_research(blind, session):
             docs.append({
                 "title": title[:180],
                 "url": url,
-                "content": content[:1800],
+                "content": content[:1200],
                 "engine": str(result.get("engine") or ""),
             })
             sources.append({
@@ -228,7 +230,7 @@ def _tavily_research(blind, session):
                 "query": _candidate_query(candidate),
                 "search_depth": "basic",
                 "topic": "general",
-                "max_results": 8,
+                "max_results": SEARCH_RESULT_LIMIT,
                 "include_answer": False,
                 "include_raw_content": False,
                 "include_images": False,
@@ -258,7 +260,7 @@ def _tavily_research(blind, session):
             docs.append({
                 "title": title[:180],
                 "url": url,
-                "content": content[:1800],
+                "content": content[:1200],
             })
             sources.append({
                 "source": "Tavily Basic Search",
