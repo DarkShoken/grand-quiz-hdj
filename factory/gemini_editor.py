@@ -4,6 +4,7 @@ import os
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_EDITOR_MODEL = os.getenv("GEMINI_EDITOR_MODEL", "gemini-3.1-flash-lite").strip()
+GEMINI_PRECHECK_MODEL = os.getenv("GEMINI_PRECHECK_MODEL", "gemini-3.5-flash-lite").strip()
 GEMINI_EDITOR_ENABLED = os.getenv("GEMINI_EDITOR_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 DIFFICULTY_RANGES = {
@@ -78,6 +79,93 @@ CANDIDATES SANS RÉPONSE :
 {json.dumps(blind, ensure_ascii=False)}"""
 
 
+def _fast_precheck(question, evidence, session):
+    """Cheap blind difficulty/distractor gate. False skips slow Gemma; None falls back to Gemma."""
+    difficulty = str(question.get("difficulty") or "")
+    lo, hi = DIFFICULTY_RANGES.get(difficulty, (8, 95))
+    qtype = str(question.get("type") or "")
+    blind = {
+        "category": question.get("category"),
+        "type": qtype,
+        "difficulty_target": difficulty,
+        "question": question.get("question"),
+        "options": question.get("options") or [],
+        "unit": question.get("unit") or "",
+        "clues": question.get("clues") or [],
+    }
+
+    prompt = f"""Tu es un CONTRÔLEUR RAPIDE indépendant d'un quiz français pour adultes.
+La réponse du rédacteur t'est cachée. Utilise uniquement le dossier Web pour évaluer la question finale.
+
+Tu ne réécris rien. Évalue honnêtement :
+- validity_ok : libellé factuel, précis et univoque ;
+- estimated_success_pct : taux de réussite réaliste d'un adulte moyen, entier 0-100 ;
+- distractors_plausible : pour QCM/intrus, les mauvaises options sont homogènes et ne rendent pas la réponse évidente par élimination. Pour les autres types, mets true.
+
+N'essaie JAMAIS de forcer la difficulté dans la tranche demandée.
+Cible demandée : {difficulty} = {lo}-{hi}%.
+70-95 = facile ; 35-69 = moyen ; 8-34 = difficile.
+Réponds en français, brièvement, JSON uniquement.
+
+DOSSIER WEB :
+{str(evidence.get('text') or '')}
+
+QUESTION FINALE SANS RÉPONSE :
+{json.dumps(blind, ensure_ascii=False)}"""
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "validity_ok": {"type": "boolean"},
+            "distractors_plausible": {"type": "boolean"},
+            "estimated_success_pct": {"type": "integer", "minimum": 0, "maximum": 100},
+            "reason": {"type": "string"},
+        },
+        "required": ["validity_ok", "distractors_plausible", "estimated_success_pct", "reason"],
+    }
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0,
+            "maxOutputTokens": 220,
+            "responseMimeType": "application/json",
+            "responseSchema": schema,
+            "thinkingConfig": {"thinkingLevel": "minimal"},
+        },
+    }
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_PRECHECK_MODEL}:generateContent"
+    )
+    try:
+        response = session.post(
+            url,
+            headers={
+                "x-goog-api-key": GEMINI_API_KEY,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=60,
+        )
+        if response.status_code >= 400:
+            return None, f"HTTP {response.status_code}"
+        data = response.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        raw = json.loads(text)
+        pct = int(raw.get("estimated_success_pct"))
+        reason = str(raw.get("reason") or "")[:320]
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+
+    if raw.get("validity_ok") is not True:
+        return False, f"validité refusée · réussite={pct}% · {reason}"
+    if qtype in {"mcq", "intruder"} and raw.get("distractors_plausible") is not True:
+        return False, f"distracteurs trop faciles · réussite={pct}% · {reason}"
+    if not (lo <= pct <= hi):
+        return False, f"difficulté hors cible {difficulty} {lo}-{hi}% · réussite={pct}% · {reason}"
+    return True, f"réussite={pct}% · {reason}"
+
+
 def finalize_with_gemini(
     category,
     candidates,
@@ -115,9 +203,6 @@ def finalize_with_gemini(
     except Exception:
         pass
 
-    # Ollama accepts a broader JSON-Schema vocabulary than Gemini responseSchema.
-    # In particular Gemini rejects `additionalProperties`, so strip it recursively
-    # while keeping our own deterministic validation after the model response.
     schema = _sanitize_schema_for_gemini(schema)
 
     payload = {
@@ -216,6 +301,25 @@ def finalize_with_gemini(
             continue
 
         q["id"] = candidate_id
+
+        precheck, detail = _fast_precheck(q, evidence, session)
+        if precheck is False:
+            print(
+                f"  Gemini précontrôle [{candidate_id}] : REJET · {detail}",
+                flush=True,
+            )
+            continue
+        if precheck is None:
+            print(
+                f"  Gemini précontrôle [{candidate_id}] : indisponible ({detail}) → Gemma final",
+                flush=True,
+            )
+        else:
+            print(
+                f"  Gemini précontrôle [{candidate_id}] : OK · {detail} → Gemma final",
+                flush=True,
+            )
+
         if adversarial_review(
             q,
             evidence,
