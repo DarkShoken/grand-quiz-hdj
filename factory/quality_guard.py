@@ -129,8 +129,21 @@ def adversarial_review(question, evidence, ollama_url, model, session):
         "clues": question.get("clues") or [],
     }
 
-    prompt = """Tu es le CONTRÔLEUR ADVERSARIAL final d'un quiz français pour adultes.
+    if qtype == "truefalse":
+        answer_protocol = 'Pour ce VRAI/FAUX uniquement, independent_answer doit être exactement "true" ou "false".'
+    elif qtype in {"numeric", "estimation"}:
+        answer_protocol = "Pour ce type numérique, independent_answer doit contenir uniquement la valeur numérique qui répond à la question."
+    else:
+        answer_protocol = (
+            "Pour ce type NON vrai/faux, independent_answer doit contenir LA RÉPONSE ELLE-MÊME à la question "
+            "(ex. un nom, un mot, un lieu). Ne réponds JAMAIS true/false/vrai/faux dans ce champ."
+        )
+
+    prompt = f"""Tu es le CONTRÔLEUR ADVERSARIAL final d'un quiz français pour adultes.
 La réponse validée par le rédacteur t'est cachée. Résous la question indépendamment à partir du dossier factuel.
+
+TYPE EXACT À CONTRÔLER : {qtype}
+{answer_protocol}
 
 Évalue DEUX choses séparément :
 1) VALIDITÉ : factualité, précision du libellé, unicité réelle de la réponse, absence d'anachronisme.
@@ -159,13 +172,16 @@ RÈGLES PAR TYPE :
 - Intrus : exactement un élément ne doit pas partager la propriété commune.
 - Vrai/faux : independent_answer doit être exactement \"true\" ou \"false\".
 - Numérique/estimation : independent_answer contient uniquement la valeur numérique utile.
-- Libre/buzzer/progressive : réponse courte unique et explicitement démontrée.
+- Libre/buzzer/progressive : independent_answer contient la réponse courte elle-même, jamais un booléen.
 
 Retourne uniquement le JSON conforme au schéma.
 DOSSIER FACTUEL :
 """ + str(evidence.get("text") or "") + "\nQUESTION FINALE SANS RÉPONSE :\n" + json.dumps(blind, ensure_ascii=False)
 
-    independent_schema = {"type": "string"}
+    independent_schema = {
+        "type": "string",
+        "description": "Réponse réelle à la question ; true/false uniquement pour un type truefalse.",
+    }
     if qtype == "truefalse":
         independent_schema = {"type": "string", "enum": ["true", "false"]}
 
@@ -214,6 +230,13 @@ DOSSIER FACTUEL :
         estimated_pct = int(raw.get("estimated_success_pct"))
     except Exception:
         return _reject(question, "difficulte_invalide", raw.get("estimated_success_pct"))
+
+    if qtype != "truefalse" and _norm(independent) in {"true", "false", "vrai", "faux"}:
+        return _reject(
+            question,
+            "protocole_reponse_invalide",
+            f"type={qtype} · independent_answer={independent!r} · raison={reason}",
+        )
 
     if raw.get("approved") is not True:
         return _reject(
