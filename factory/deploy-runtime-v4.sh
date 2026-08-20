@@ -48,10 +48,11 @@ set_env SOURCE_FETCH_LIMIT "3"
 set_env SEARCH_RESULT_LIMIT "8"
 set_env PAGE_TEXT_LIMIT "3500"
 
-# Gemini n'effectue AUCUNE recherche Web : il sert uniquement de rédacteur rapide.
+# Gemini n'effectue AUCUNE recherche Web : rédaction puis précontrôle rapides.
 ensure_env GEMINI_API_KEY ""
 set_env GEMINI_EDITOR_ENABLED "1"
 set_env GEMINI_EDITOR_MODEL "gemini-3.1-flash-lite"
+set_env GEMINI_PRECHECK_MODEL "gemini-3.5-flash-lite"
 set_env GEMINI_RESEARCH_MODEL "gemini-3.5-flash-lite"
 set_env GEMINI_GOOGLE_SEARCH_ENABLED "0"
 
@@ -107,7 +108,7 @@ if "adversarial_review(q, evidence" not in segment:
     segment = segment[:pos] + replacement + segment[pos + len(marker_return):]
     text = text[:start] + segment + text[end:]
 
-# Chemin texte V4.1 : SearXNG -> Gemini 3.1 Flash-Lite -> Gemma adversarial.
+# Chemin texte V4.2 : SearXNG -> Gemini 3.1 éditeur -> Gemini 3.5 précontrôle -> Gemma final seulement si prometteur.
 start = text.find("def review_text(")
 end = text.find("\ndef commons_image(", start)
 if start < 0 or end <= start:
@@ -133,12 +134,11 @@ new_review = '''def review_text(category, candidates):
             session,
         )
     except GeminiEditorUnavailable as exc:
-        # Fail closed : pas de retour silencieux vers une longue double passe locale.
         print(f'  Gemini rédacteur indisponible : {exc} · candidate rejetée', flush=True)
         return []
 
     print(
-        f'  Vérification {evidence.get("provider", "Web")} + Gemini 3.1 + Gemma local : '
+        f'  Vérification {evidence.get("provider", "Web")} + Gemini 3.1/3.5 + Gemma final : '
         f'{len(reviewed)}/{len(candidates)} retenues · '
         f'{len(evidence.get("sources") or [])} sources',
         flush=True,
@@ -156,12 +156,13 @@ python3 -m py_compile "$INSTALL_DIR/gemini_editor.py"
 python3 -m py_compile "$TARGET"
 
 echo
-echo "Runtime V4.1 gratuit installé :"
+echo "Runtime V4.2 gratuit installé :"
 echo "- recherche : SearXNG local · 8 résultats max · 3 pages lues"
 echo "- rédacteur rapide : Gemini 3.1 Flash-Lite · thinking=minimal · sans Google Search"
-echo "- filtre précoce : difficulté/qualité hors cible rejetées avant Gemma"
+echo "- précontrôle rapide : Gemini 3.5 Flash-Lite · difficulté/validité/distracteurs"
+echo "- Gemma local : lancé uniquement si les deux contrôles Gemini laissent passer la candidate"
 echo "- contrôle final : Gemma 3 local adversarial, une seule passe"
 echo "- minimum : 2 domaines Web distincts"
-echo "- sécurité : si Gemini est indisponible, candidate rejetée (fail closed)"
+echo "- sécurité : éditeur Gemini indisponible = rejet ; précontrôle indisponible = Gemma final"
 echo "- Groq absent du chemin texte normal"
 echo
