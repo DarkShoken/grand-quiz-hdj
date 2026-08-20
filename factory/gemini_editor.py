@@ -17,6 +17,19 @@ class GeminiEditorUnavailable(RuntimeError):
     pass
 
 
+def _sanitize_schema_for_gemini(value):
+    """Convert our Ollama JSON schema to the subset accepted by Gemini responseSchema."""
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_schema_for_gemini(item)
+            for key, item in value.items()
+            if key != "additionalProperties"
+        }
+    if isinstance(value, list):
+        return [_sanitize_schema_for_gemini(item) for item in value]
+    return value
+
+
 def _prompt(category, candidates, evidence, requested):
     lo, hi = DIFFICULTY_RANGES.get(requested, (8, 95))
     blind = []
@@ -101,6 +114,11 @@ def finalize_with_gemini(
         }
     except Exception:
         pass
+
+    # Ollama accepts a broader JSON-Schema vocabulary than Gemini responseSchema.
+    # In particular Gemini rejects `additionalProperties`, so strip it recursively
+    # while keeping our own deterministic validation after the model response.
+    schema = _sanitize_schema_for_gemini(schema)
 
     payload = {
         "contents": [{
