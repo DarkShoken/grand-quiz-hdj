@@ -3,8 +3,13 @@
   if (!G?.createTransport) return;
 
   const META_KEY = 'grand-quiz-special-meta-v2';
-  const acceptedMap = window.GRAND_QUIZ_ACCEPTED_ANSWERS || (window.GRAND_QUIZ_ACCEPTED_ANSWERS = new Map());
-  const meta = new Map();
+  // host-scoring-engine remplace temporairement window.Map juste avant le chargement
+  // de ce module. On récupère donc son parent natif pour nos propres collections,
+  // afin de ne pas consommer les deux Map que le moteur doit capturer dans host-v2.
+  const HostCaptureMap = window.Map;
+  const NativeMap = Object.getPrototypeOf(HostCaptureMap?.prototype || {})?.constructor || HostCaptureMap;
+  const acceptedMap = window.GRAND_QUIZ_ACCEPTED_ANSWERS || (window.GRAND_QUIZ_ACCEPTED_ANSWERS = new NativeMap());
+  const meta = new NativeMap();
   const correctedNumeric = new Set();
   let playersMap = null;
   let answersMap = null;
