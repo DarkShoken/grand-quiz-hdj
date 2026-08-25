@@ -231,7 +231,31 @@
     });
   }
 
-  const observer = new MutationObserver(scheduleFit);
+  const TIMER_SELECTORS = '.timer-wrap, .reveal-auto-countdown, .host-auto-next, #timerValue, #tvRevealTimer, #hostRevealTimer';
+
+  const observer = new MutationObserver((mutations) => {
+    const shouldRefit = mutations.some((mutation) => {
+      const rawTarget = mutation.target;
+      const target = rawTarget?.nodeType === Node.ELEMENT_NODE ? rawTarget : rawTarget?.parentElement;
+      if (!target) return false;
+
+      // Les chronos changent très souvent. Ils ne modifient pas la géométrie utile
+      // de la question et ne doivent surtout pas relancer le coûteux calcul de fontes.
+      if (target.closest?.(TIMER_SELECTORS)) return false;
+
+      if (target.matches?.('#stage') || target.closest?.('#stage, .player-card')) return true;
+
+      const nodes = [...mutation.addedNodes, ...mutation.removedNodes];
+      return nodes.some((node) =>
+        node.nodeType === Node.ELEMENT_NODE && (
+          node.matches?.('.question-card, .player-card, .mobile-options') ||
+          node.querySelector?.('.question-card, .player-card, .mobile-options')
+        )
+      );
+    });
+
+    if (shouldRefit) scheduleFit();
+  });
 
   function start() {
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
