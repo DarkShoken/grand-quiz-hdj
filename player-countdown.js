@@ -13,45 +13,30 @@
       top: 118px;
       right: 24px;
       z-index: 12000;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 172px;
-      padding: 12px 16px;
-      border-radius: 20px;
-      background: rgba(10, 13, 34, .96);
-      border: 2px solid rgba(76, 201, 240, .55);
-      box-shadow: 0 14px 42px rgba(0,0,0,.45);
-      color: #fff;
-      pointer-events: none;
-      font-family: inherit;
-    }
-    #playerLiveTimer.hidden { display: none !important; }
-    #playerLiveTimer.reveal { border-color: rgba(255, 209, 102, .7); }
-    #playerLiveTimerValue {
       width: 64px;
       height: 64px;
-      flex: 0 0 64px;
       display: grid;
       place-items: center;
       border-radius: 50%;
       border: 5px solid #4cc9f0;
-      background: rgba(76, 201, 240, .16);
+      background: rgba(9, 12, 29, .96);
+      box-shadow: 0 10px 28px rgba(0,0,0,.42);
+      color: #fff;
       font-size: 29px;
       font-weight: 1000;
       line-height: 1;
       box-sizing: border-box;
+      pointer-events: none;
+      font-family: inherit;
     }
-    #playerLiveTimer.reveal #playerLiveTimerValue {
+    #playerLiveTimer.hidden { display: none !important; }
+    #playerLiveTimer.reveal {
       border-color: #ffd166;
-      background: rgba(255, 209, 102, .14);
+      background: rgba(9, 12, 29, .96);
     }
-    #playerLiveTimerText { display: grid; gap: 3px; }
-    #playerLiveTimerLabel { font-size: 16px; font-weight: 950; white-space: nowrap; }
-    #playerLiveTimerHint { font-size: 12px; color: #b9c2e1; font-weight: 750; white-space: nowrap; }
-    #playerLiveTimer.urgent #playerLiveTimerValue {
+    #playerLiveTimer.urgent {
       border-color: #ff4d6d;
-      background: rgba(255, 77, 109, .16);
+      background: rgba(9, 12, 29, .96);
     }
 
     @media (max-width: 700px) {
@@ -60,23 +45,21 @@
         left: 50%;
         right: auto;
         transform: translateX(-50%);
-        min-width: 0;
-        padding: 0;
-        gap: 0;
-        border: 0;
-        background: transparent;
-        box-shadow: none;
-      }
-      #playerLiveTimerValue {
         width: 38px;
         height: 38px;
-        flex-basis: 38px;
         border-width: 3px;
         font-size: 17px;
-        background: rgba(9, 12, 29, .96);
         box-shadow: 0 5px 16px rgba(0,0,0,.35);
       }
-      #playerLiveTimerText { display: none; }
+
+      /* Sur l'écran Réponse, le titre est centré en haut :
+         on déplace donc le chrono dans le coin supérieur droit. */
+      #playerLiveTimer.reveal {
+        top: max(8px, env(safe-area-inset-top));
+        left: auto;
+        right: 10px;
+        transform: none;
+      }
     }
   `;
   document.head.appendChild(style);
@@ -84,18 +67,8 @@
   const node = document.createElement('div');
   node.id = 'playerLiveTimer';
   node.className = 'hidden';
-  node.innerHTML = `
-    <div id="playerLiveTimerValue">—</div>
-    <div id="playerLiveTimerText">
-      <strong id="playerLiveTimerLabel">Temps restant</strong>
-      <span id="playerLiveTimerHint">Réponds maintenant</span>
-    </div>
-  `;
+  node.textContent = '—';
   document.body.appendChild(node);
-
-  const valueNode = document.getElementById('playerLiveTimerValue');
-  const labelNode = document.getElementById('playerLiveTimerLabel');
-  const hintNode = document.getElementById('playerLiveTimerHint');
 
   function requestState() {
     const now = Date.now();
@@ -110,13 +83,9 @@
 
     if (state?.phase === 'question' && state?.question?.type !== 'buzzer' && state?.deadline) {
       deadline = Number(state.deadline);
-      labelNode.textContent = 'Temps restant';
-      hintNode.textContent = 'Réponds maintenant';
     } else if (state?.phase === 'reveal' && state?.revealDeadline) {
       deadline = Number(state.revealDeadline);
       reveal = true;
-      labelNode.textContent = 'Question suivante';
-      hintNode.textContent = 'Temps pour commenter';
     }
 
     if (!deadline || !Number.isFinite(deadline)) {
@@ -126,7 +95,7 @@
     }
 
     const seconds = Math.ceil(Math.max(0, deadline - Date.now()) / 1000);
-    valueNode.textContent = String(seconds);
+    node.textContent = String(seconds);
     node.classList.toggle('reveal', reveal);
     node.classList.toggle('urgent', seconds <= 5);
     node.classList.remove('hidden');
