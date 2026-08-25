@@ -2,12 +2,11 @@
   const G = window.GrandQuiz;
   if (!G || typeof G.createTransport !== 'function') return;
 
-  const REVEAL_DELAY_MS = 5000;
+  const REVEAL_DELAY_MS = 3000;
   let latestState = null;
-  let countdownTimer = null;
-  let countdownTick = null;
   let countdownQuestionId = null;
   let revealAt = 0;
+  let actionDoneForQuestion = null;
 
   function onlinePlayerIds(state) {
     return (state?.players || [])
@@ -23,7 +22,12 @@
     if (!activePlayers.length) return false;
 
     const answered = new Set(state.answeredPlayerIds || []);
-    return activePlayers.every((playerId) => answered.has(playerId));
+    const answerCount = Number(state.answerCount) || answered.size;
+
+    // answerCount sert de garde-fou si un ancien client ne renvoie pas
+    // correctement answeredPlayerIds, tout en vérifiant les IDs quand ils existent.
+    return answerCount >= activePlayers.length ||
+      activePlayers.every((playerId) => answered.has(playerId));
   }
 
   function removeNotice() {
@@ -31,7 +35,7 @@
   }
 
   function paintNotice() {
-    if (!countdownTimer || !revealAt || latestState?.phase !== 'question') {
+    if (!revealAt || latestState?.phase !== 'question') {
       removeNotice();
       return;
     }
@@ -51,55 +55,59 @@
     badge.textContent = `✅ Tous ont répondu · réponse dans ${seconds} s`;
   }
 
-  function clearCountdown() {
-    clearTimeout(countdownTimer);
-    clearInterval(countdownTick);
-    countdownTimer = null;
-    countdownTick = null;
+  function resetCountdown() {
     countdownQuestionId = null;
     revealAt = 0;
     removeNotice();
   }
 
-  function startCountdown(state) {
+  function armCountdown(state) {
     const questionId = state?.question?.id;
     if (!questionId) return;
-    if (countdownTimer && countdownQuestionId === questionId) return;
 
-    clearCountdown();
-    countdownQuestionId = questionId;
-    revealAt = Date.now() + REVEAL_DELAY_MS;
+    if (countdownQuestionId !== questionId) {
+      countdownQuestionId = questionId;
+      revealAt = Date.now() + REVEAL_DELAY_MS;
+      actionDoneForQuestion = null;
+    }
+  }
 
-    countdownTick = setInterval(paintNotice, 200);
-    requestAnimationFrame(paintNotice);
+  function reconcile() {
+    const state = latestState;
 
-    countdownTimer = setTimeout(() => {
-      countdownTimer = null;
-      clearInterval(countdownTick);
-      countdownTick = null;
-      removeNotice();
+    if (!everyoneAnswered(state)) {
+      resetCountdown();
+      return;
+    }
 
-      if (
-        latestState?.phase === 'question' &&
-        latestState?.question?.id === questionId &&
-        everyoneAnswered(latestState)
-      ) {
-        document.getElementById('revealBtn')?.click();
-      }
-    }, REVEAL_DELAY_MS);
+    armCountdown(state);
+    paintNotice();
+
+    if (!revealAt || Date.now() < revealAt) return;
+
+    const questionId = state?.question?.id;
+    if (!questionId || actionDoneForQuestion === questionId) return;
+
+    const button = document.getElementById('revealBtn');
+    if (!button || button.disabled) {
+      // Le host peut être en plein rerender : on réessaiera au prochain tick.
+      return;
+    }
+
+    actionDoneForQuestion = questionId;
+    button.click();
   }
 
   function evaluate(state) {
-    latestState = state;
-    if (everyoneAnswered(state)) startCountdown(state);
-    else clearCountdown();
+    latestState = state || null;
+    reconcile();
   }
 
   const originalCreateTransport = G.createTransport.bind(G);
   G.createTransport = function createTransportWithAutoReveal(options = {}) {
     const transport = originalCreateTransport(options);
 
-    if (options.role === 'host') {
+    if (options.role === 'host' && transport?.send) {
       const originalSend = transport.send.bind(transport);
       transport.send = (type, payload = {}) => {
         if (type === 'state' && payload && typeof payload === 'object') {
@@ -112,5 +120,13 @@
     return transport;
   };
 
-  window.addEventListener('pagehide', clearCountdown);
+  // Une boucle courte rend l'action robuste aux rerenders et au throttling
+  // occasionnel des timers par le navigateur.
+  setInterval(reconcile, 250);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) reconcile();
+  });
+  window.addEventListener('focus', reconcile);
+  window.addEventListener('pagehide', removeNotice);
 })();
