@@ -2,7 +2,7 @@
   const G = window.GrandQuiz;
   if (!G || typeof G.createTransport !== 'function') return;
 
-  const REVEAL_DELAY_MS = 3000;
+  const REVEAL_DELAY_MS = 5000;
   let latestState = null;
   let countdownQuestionId = null;
   let revealAt = 0;
@@ -24,8 +24,6 @@
     const answered = new Set(state.answeredPlayerIds || []);
     const answerCount = Number(state.answerCount) || answered.size;
 
-    // answerCount sert de garde-fou si un ancien client ne renvoie pas
-    // correctement answeredPlayerIds, tout en vérifiant les IDs quand ils existent.
     return answerCount >= activePlayers.length ||
       activePlayers.every((playerId) => answered.has(playerId));
   }
@@ -67,8 +65,20 @@
 
     if (countdownQuestionId !== questionId) {
       countdownQuestionId = questionId;
-      revealAt = Date.now() + REVEAL_DELAY_MS;
+      const requestedRevealAt = Date.now() + REVEAL_DELAY_MS;
+      const nativeDeadline = Number(state.deadline);
+      revealAt = Number.isFinite(nativeDeadline) && nativeDeadline > 0
+        ? Math.min(nativeDeadline, requestedRevealAt)
+        : requestedRevealAt;
       actionDoneForQuestion = null;
+    }
+  }
+
+  function exposeShortDeadline(state) {
+    if (!state || !revealAt) return;
+    const nativeDeadline = Number(state.deadline);
+    if (!Number.isFinite(nativeDeadline) || nativeDeadline <= 0 || nativeDeadline > revealAt) {
+      state.deadline = revealAt;
     }
   }
 
@@ -81,6 +91,10 @@
     }
 
     armCountdown(state);
+    // Important : la deadline raccourcie est envoyée à la TV et aux téléphones.
+    // Le compte à rebours visible passe donc réellement à 5 s au lieu de continuer
+    // à afficher le temps initial de la question.
+    exposeShortDeadline(state);
     paintNotice();
 
     if (!revealAt || Date.now() < revealAt) return;
@@ -89,10 +103,7 @@
     if (!questionId || actionDoneForQuestion === questionId) return;
 
     const button = document.getElementById('revealBtn');
-    if (!button || button.disabled) {
-      // Le host peut être en plein rerender : on réessaiera au prochain tick.
-      return;
-    }
+    if (!button || button.disabled) return;
 
     actionDoneForQuestion = questionId;
     button.click();
@@ -120,8 +131,6 @@
     return transport;
   };
 
-  // Une boucle courte rend l'action robuste aux rerenders et au throttling
-  // occasionnel des timers par le navigateur.
   setInterval(reconcile, 250);
 
   document.addEventListener('visibilitychange', () => {
