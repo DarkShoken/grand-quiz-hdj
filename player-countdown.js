@@ -53,20 +53,28 @@
       border-color: #ff4d6d;
       background: rgba(255, 77, 109, .16);
     }
-    @media (max-width: 900px) {
+
+    @media (max-width: 700px) {
       #playerLiveTimer {
-        top: 68px;
-        right: 10px;
+        top: max(7px, env(safe-area-inset-top));
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
         min-width: 0;
-        padding: 7px 9px;
-        border-radius: 16px;
+        padding: 0;
+        gap: 0;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
       }
       #playerLiveTimerValue {
-        width: 48px;
-        height: 48px;
-        flex-basis: 48px;
-        border-width: 4px;
-        font-size: 22px;
+        width: 38px;
+        height: 38px;
+        flex-basis: 38px;
+        border-width: 3px;
+        font-size: 17px;
+        background: rgba(9, 12, 29, .96);
+        box-shadow: 0 5px 16px rgba(0,0,0,.35);
       }
       #playerLiveTimerText { display: none; }
     }
