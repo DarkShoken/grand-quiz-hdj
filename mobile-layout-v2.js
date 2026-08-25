@@ -124,7 +124,10 @@
   const observer = new MutationObserver(schedule);
 
   function start() {
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    // Les changements de texte du chrono ne doivent pas déclencher un nouveau
+    // calcul complet des tailles. Les vrais changements d'écran remplacent des
+    // nœuds dans #app et sont donc détectés par childList.
+    observer.observe(document.body, { childList: true, subtree: true });
     schedule();
     document.fonts?.ready?.then(schedule).catch(() => {});
   }
