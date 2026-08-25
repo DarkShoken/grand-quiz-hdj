@@ -2,7 +2,7 @@
   const G = window.GrandQuiz;
   if (!G || typeof G.createTransport !== 'function') return;
 
-  const REVEAL_DURATION_MS = 10000;
+  const REVEAL_DURATION_MS = 5000;
   const STORAGE_PREFIX = 'grand-quiz-team-names:';
   const nouns = [
     'Patates', 'Flamants', 'Pingouins', 'Licornes', 'Castors', 'Loutres', 'Cactus',
@@ -145,8 +145,8 @@
     if (latestPhase === 'reveal') {
       ensureStableRevealTimer();
       const label = stage.querySelector('.host-auto-next span');
-      if (label && label.textContent !== '10 secondes pour commenter la réponse.') {
-        label.textContent = '10 secondes pour commenter la réponse.';
+      if (label && label.textContent !== '5 secondes pour commenter la réponse.') {
+        label.textContent = '5 secondes pour commenter la réponse.';
       }
 
       if (savedAnswerLog && savedAnswerQuestionId === activeQuestionId && !stage.querySelector('.preserved-answer-log')) {
