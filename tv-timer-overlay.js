@@ -1,149 +1,128 @@
 (() => {
-  const G = window.GrandQuiz;
-  if (!G) return;
-
-  const room = G.cleanRoom(G.qs('room', 'QUIZ'));
-  let state = null;
-
   const style = document.createElement('style');
   style.textContent = `
-    #tvStandaloneTimer {
+    #gameCountdownOverlay {
       position: fixed;
-      right: 22px;
-      bottom: 22px;
-      z-index: 10000;
-      min-width: 150px;
-      padding: 12px 16px;
-      border-radius: 20px;
-      background: rgba(8, 10, 28, .96);
-      border: 2px solid rgba(255,255,255,.22);
-      box-shadow: 0 12px 40px rgba(0,0,0,.48);
+      left: 50%;
+      bottom: 54px;
+      transform: translateX(-50%);
+      z-index: 20000;
       display: flex;
       align-items: center;
       gap: 12px;
-      pointer-events: none;
+      padding: 9px 16px 9px 10px;
+      border-radius: 999px;
+      background: rgba(7, 8, 23, .97);
+      border: 2px solid rgba(76, 201, 240, .55);
+      box-shadow: 0 10px 34px rgba(0,0,0,.5);
       color: #fff;
+      pointer-events: none;
       font-family: inherit;
     }
-    #tvStandaloneTimer.hidden { display: none !important; }
-    #tvStandaloneTimerValue {
-      width: 68px;
-      height: 68px;
-      border-radius: 50%;
+    #gameCountdownOverlay.hidden {
+      display: none !important;
+    }
+    #gameCountdownOverlay.reveal {
+      border-color: rgba(255, 209, 102, .7);
+    }
+    #gameCountdownValue {
+      width: 58px;
+      height: 58px;
+      flex: 0 0 58px;
       display: grid;
       place-items: center;
-      flex: 0 0 68px;
-      font-size: 30px;
+      border-radius: 50%;
+      border: 5px solid #4cc9f0;
+      background: rgba(76,201,240,.15);
+      color: #fff;
+      font-size: 27px;
       line-height: 1;
       font-weight: 1000;
-      color: #fff;
-      background: rgba(76, 201, 240, .17);
-      border: 5px solid #4cc9f0;
       box-sizing: border-box;
     }
-    #tvStandaloneTimer.reveal #tvStandaloneTimerValue {
+    #gameCountdownOverlay.reveal #gameCountdownValue {
       border-color: #ffd166;
-      background: rgba(255, 209, 102, .16);
+      background: rgba(255,209,102,.15);
     }
-    #tvStandaloneTimerText {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      white-space: nowrap;
-    }
-    #tvStandaloneTimerText strong {
+    #gameCountdownLabel {
       font-size: 18px;
       font-weight: 950;
+      white-space: nowrap;
     }
-    #tvStandaloneTimerText span {
-      font-size: 13px;
-      color: #b9c2e1;
-      font-weight: 750;
-    }
-    @media (max-width: 820px) {
-      #tvStandaloneTimer {
-        right: 10px;
+    @media (max-width: 760px) {
+      #gameCountdownOverlay {
         bottom: 10px;
-        min-width: 0;
-        padding: 8px 10px;
+        padding: 6px 11px 6px 7px;
+        gap: 8px;
       }
-      #tvStandaloneTimerValue {
-        width: 54px;
-        height: 54px;
-        flex-basis: 54px;
-        font-size: 24px;
+      #gameCountdownValue {
+        width: 48px;
+        height: 48px;
+        flex-basis: 48px;
+        border-width: 4px;
+        font-size: 22px;
       }
-      #tvStandaloneTimerText strong { font-size: 15px; }
-      #tvStandaloneTimerText span { display: none; }
+      #gameCountdownLabel {
+        font-size: 14px;
+      }
     }
   `;
   document.head.appendChild(style);
 
-  const node = document.createElement('div');
-  node.id = 'tvStandaloneTimer';
-  node.className = 'hidden';
-  node.innerHTML = `
-    <div id="tvStandaloneTimerValue">—</div>
-    <div id="tvStandaloneTimerText">
-      <strong id="tvStandaloneTimerLabel">Temps restant</strong>
-      <span id="tvStandaloneTimerHint">Répondez maintenant</span>
-    </div>
+  const overlay = document.createElement('div');
+  overlay.id = 'gameCountdownOverlay';
+  overlay.className = 'hidden';
+  overlay.innerHTML = `
+    <div id="gameCountdownValue">—</div>
+    <div id="gameCountdownLabel">Temps restant</div>
   `;
-  document.body.appendChild(node);
+  document.body.appendChild(overlay);
 
-  const valueNode = document.getElementById('tvStandaloneTimerValue');
-  const labelNode = document.getElementById('tvStandaloneTimerLabel');
-  const hintNode = document.getElementById('tvStandaloneTimerHint');
+  const value = document.getElementById('gameCountdownValue');
+  const label = document.getElementById('gameCountdownLabel');
+
+  function visible(node) {
+    if (!node) return false;
+    const style = getComputedStyle(node);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  }
 
   function update() {
-    if (!state) {
-      node.classList.add('hidden');
+    const gameView = document.getElementById('gameView');
+    if (!gameView || gameView.classList.contains('hidden')) {
+      overlay.classList.add('hidden');
       return;
     }
 
-    let deadline = null;
-    let reveal = false;
+    const questionTimer = document.getElementById('timerValue');
+    const revealTimer = document.getElementById('tvRevealTimer');
 
-    if (state.phase === 'question' && state.question?.type !== 'buzzer' && state.deadline) {
-      deadline = Number(state.deadline);
-      labelNode.textContent = 'Temps restant';
-      hintNode.textContent = 'Répondez maintenant';
-    } else if (state.phase === 'reveal' && state.revealDeadline) {
-      deadline = Number(state.revealDeadline);
-      reveal = true;
-      labelNode.textContent = 'Question suivante';
-      hintNode.textContent = 'Temps pour commenter';
+    if (questionTimer && visible(questionTimer)) {
+      const text = String(questionTimer.textContent || '').trim();
+      if (text) {
+        value.textContent = text;
+        label.textContent = 'Temps restant';
+        overlay.classList.remove('reveal', 'hidden');
+        return;
+      }
     }
 
-    if (!deadline || !Number.isFinite(deadline)) {
-      node.classList.add('hidden');
-      return;
+    if (revealTimer && visible(revealTimer)) {
+      const text = String(revealTimer.textContent || '').trim();
+      if (text) {
+        value.textContent = text;
+        label.textContent = 'Question suivante';
+        overlay.classList.add('reveal');
+        overlay.classList.remove('hidden');
+        return;
+      }
     }
 
-    const ms = Math.max(0, deadline - Date.now());
-    const seconds = Math.ceil(ms / 1000);
-    valueNode.textContent = String(seconds);
-    node.classList.toggle('reveal', reveal);
-    node.classList.remove('hidden');
+    overlay.classList.add('hidden');
   }
-
-  function requestState() {
-    transport.send('state_request', { from: 'screen-timer' });
-  }
-
-  const transport = G.createTransport({
-    room,
-    role: 'screen-timer',
-    onMessage: (message) => {
-      if (message.type !== 'state') return;
-      state = message.payload || null;
-      update();
-    },
-    onStatus: ({ ready }) => {
-      if (ready) requestState();
-    },
-  });
 
   setInterval(update, 100);
-  setInterval(requestState, 3000);
+  document.addEventListener('visibilitychange', update);
+  window.addEventListener('focus', update);
+  update();
 })();
