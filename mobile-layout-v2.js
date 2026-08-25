@@ -76,27 +76,36 @@
 
       const viewportWidth = Math.max(320, window.visualViewport?.width || window.innerWidth || 390);
       const viewportHeight = Math.max(420, window.visualViewport?.height || window.innerHeight || 700);
+      const phone = viewportWidth <= 700;
 
-      const questionMin = clamp(viewportWidth * 0.055, 20, 27);
-      const questionMax = clamp(Math.min(viewportWidth * 0.125, viewportHeight * 0.064), 34, 54);
-      let questionSize = largestFont([question], questionMin, questionMax, 1.04);
+      const questionMin = phone
+        ? 18
+        : clamp(viewportWidth * 0.055, 20, 27);
+      const questionMax = phone
+        ? clamp(Math.min(viewportWidth * 0.085, viewportHeight * 0.045), 24, 34)
+        : clamp(Math.min(viewportWidth * 0.125, viewportHeight * 0.064), 34, 54);
+      let questionSize = largestFont([question], questionMin, questionMax, phone ? 1.08 : 1.04);
 
-      const answerMin = clamp(viewportWidth * 0.052, 18, 25);
-      const answerMax = clamp(Math.min(viewportWidth * 0.145, viewportHeight * 0.07), 32, 58);
-      let answerSize = largestFont(answers, answerMin, answerMax, 1.02);
+      const answerMin = phone
+        ? 16
+        : clamp(viewportWidth * 0.052, 18, 25);
+      const answerMax = phone
+        ? clamp(Math.min(viewportWidth * 0.085, viewportHeight * 0.052), 22, 32)
+        : clamp(Math.min(viewportWidth * 0.145, viewportHeight * 0.07), 32, 58);
+      let answerSize = largestFont(answers, answerMin, answerMax, phone ? 1.05 : 1.02);
 
-      const answerCeiling = questionSize * 1.18;
+      const answerCeiling = questionSize * (phone ? 1.08 : 1.18);
       if (answerSize > answerCeiling) {
         answerSize = answerCeiling;
-        setFont(answers, answerSize, 1.02);
+        setFont(answers, answerSize, phone ? 1.05 : 1.02);
       }
 
       let attempts = 0;
-      while ((card.scrollHeight > card.clientHeight + 1 || question.scrollHeight > question.clientHeight + 1 || !fits(answers)) && attempts < 30) {
-        questionSize = Math.max(18, questionSize * 0.965);
-        answerSize = Math.max(17, answerSize * 0.965);
-        setFont([question], questionSize, 1.04);
-        setFont(answers, answerSize, 1.02);
+      while ((card.scrollHeight > card.clientHeight + 1 || question.scrollHeight > question.clientHeight + 1 || !fits(answers)) && attempts < 34) {
+        questionSize = Math.max(phone ? 16 : 18, questionSize * 0.96);
+        answerSize = Math.max(phone ? 15 : 17, answerSize * 0.96);
+        setFont([question], questionSize, phone ? 1.08 : 1.04);
+        setFont(answers, answerSize, phone ? 1.05 : 1.02);
         attempts += 1;
       }
     });
