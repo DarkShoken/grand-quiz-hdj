@@ -1,0 +1,23 @@
+[Unit]
+Description=Grand Quiz HDJ - Recovery Factory Gemma-only
+After=network-online.target ollama-tunnel.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dark
+WorkingDirectory=/opt/grand-quiz-factory
+EnvironmentFile=/etc/grand-quiz-factory.env
+Environment=OLLAMA_URL=http://127.0.0.1:11435
+Environment=RECOVERY_MODEL=gemma4:12b
+Environment=RECOVERY_NUM_CTX=8192
+Environment=RECOVERY_KEEP_ALIVE=15m
+Environment=RECOVERY_SLEEP_SECONDS=180
+ExecStart=/opt/grand-quiz-factory/venv/bin/python /opt/grand-quiz-factory/recovery_factory.py --daemon
+Restart=on-failure
+RestartSec=20
+Nice=10
+CPUWeight=20
+
+[Install]
+WantedBy=multi-user.target
