@@ -31,7 +31,7 @@
     <h1>Accès soignant</h1>
     <p>Entre le code PIN à 4 chiffres.</p>
     <label for="pinInput">Code PIN</label>
-    <input id="pinInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="••••" autofocus>
+    <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••" autofocus aria-label="Code PIN à 4 chiffres">
     <button id="pinSubmit" type="submit">Ouvrir la console</button>
     <div id="pinError" class="error" role="alert" aria-live="polite"></div>
     <div id="pinStatus" class="status" aria-live="polite"></div>
