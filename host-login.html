@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#070817">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <title>Le Grand Quiz — Accès soignant</title>
+  <style>
+    :root{color-scheme:dark;--bg:#070817;--panel:#12162d;--panel2:#171b38;--text:#f5f7ff;--muted:#aeb6d3;--cyan:#4cc9f0;--pink:#ff9cb1;--green:#7bf8d3}
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    body{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 50% 10%,#171b38 0,#0d1025 36%,#070817 72%)}
+    .card{width:min(420px,100%);padding:30px;border-radius:26px;text-align:center;background:linear-gradient(145deg,var(--panel2),var(--panel));border:1px solid rgba(255,255,255,.14);box-shadow:0 30px 90px rgba(0,0,0,.48)}
+    .icon{font-size:3rem;line-height:1}
+    h1{font-size:2rem;margin:10px 0 6px}
+    p{margin:0 0 16px;color:var(--muted)}
+    label{display:block;text-align:left;font-size:.85rem;font-weight:800;margin:4px 0 7px;color:#dfe4f7}
+    input{width:100%;padding:15px 16px;text-align:center;letter-spacing:.55em;font-size:1.8rem;font-weight:900;border:1px solid rgba(255,255,255,.18);border-radius:15px;background:#090c1d;color:#fff;outline:none}
+    input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(76,201,240,.16)}
+    button{width:100%;margin-top:14px;padding:14px 18px;border:0;border-radius:14px;background:linear-gradient(135deg,#4361ee,#4cc9f0);color:white;font-size:1rem;font-weight:900;cursor:pointer}
+    button:disabled{opacity:.55;cursor:wait}
+    .error{min-height:24px;margin-top:11px;color:var(--pink);font-weight:800}
+    .status{min-height:22px;margin-top:8px;color:var(--green);font-weight:800}
+    .room{display:inline-block;margin-top:8px;padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--muted);font-size:.8rem;font-weight:800}
+  </style>
+</head>
+<body>
+  <form id="pinForm" class="card" novalidate>
+    <div class="icon">🔐</div>
+    <h1>Accès soignant</h1>
+    <p>Entre le code PIN à 4 chiffres.</p>
+    <label for="pinInput">Code PIN</label>
+    <input id="pinInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="••••" autofocus>
+    <button id="pinSubmit" type="submit">Ouvrir la console</button>
+    <div id="pinError" class="error" role="alert" aria-live="polite"></div>
+    <div id="pinStatus" class="status" aria-live="polite"></div>
+    <div id="roomLabel" class="room"></div>
+  </form>
+
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search);
+      let room = String(params.get('room') || 'QUIZ')
+        .toUpperCase()
+        .replace(/[^A-Z0-9_-]/g, '')
+        .slice(0, 16) || 'QUIZ';
+      if (room === 'QUIZ01') room = 'QUIZ';
+
+      const authKey = `grand-quiz-host-auth:${room}`;
+      const form = document.getElementById('pinForm');
+      const input = document.getElementById('pinInput');
+      const submit = document.getElementById('pinSubmit');
+      const errorBox = document.getElementById('pinError');
+      const statusBox = document.getElementById('pinStatus');
+      document.getElementById('roomLabel').textContent = `Salle ${room}`;
+
+      if (sessionStorage.getItem(authKey) === 'ok') {
+        location.replace(`host.html?room=${encodeURIComponent(room)}`);
+        return;
+      }
+
+      input.addEventListener('input', () => {
+        input.value = input.value.replace(/\D/g, '').slice(0, 4);
+        errorBox.textContent = '';
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorBox.textContent = '';
+        statusBox.textContent = '';
+
+        if (input.value.length !== 4) {
+          errorBox.textContent = 'Entre exactement 4 chiffres.';
+          input.focus();
+          return;
+        }
+
+        submit.disabled = true;
+        statusBox.textContent = 'Vérification…';
+        try {
+          const response = await fetch('/api/verify-host-pin', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({pin: input.value}),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) throw new Error(data.error || 'Code PIN incorrect.');
+
+          sessionStorage.setItem(authKey, 'ok');
+          statusBox.textContent = 'Accès autorisé.';
+          location.replace(`host.html?room=${encodeURIComponent(room)}`);
+        } catch (error) {
+          statusBox.textContent = '';
+          errorBox.textContent = error?.message || 'Impossible de vérifier le code.';
+          input.select();
+        } finally {
+          submit.disabled = false;
+        }
+      });
+
+      requestAnimationFrame(() => input.focus());
+    })();
+  </script>
+</body>
+</html>
