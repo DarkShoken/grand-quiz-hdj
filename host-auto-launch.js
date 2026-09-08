@@ -46,6 +46,12 @@
         document.body.classList.remove('quiz-auto-launching');
         launching = false;
         normalizeButtonText();
+        const questionNumber = document.getElementById('metricQuestion')?.textContent || '';
+        status.textContent = questionNumber && questionNumber !== '—'
+          ? `✅ Partie lancée · question ${questionNumber}`
+          : '✅ Partie lancée.';
+        status.style.color = '#7bf8d3';
+        stage.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 500);
     });
   }
