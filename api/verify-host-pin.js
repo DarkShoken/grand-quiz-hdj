@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const expectedPin = String(process.env.HOST_PIN || '2580').trim();
+  const expectedPin = '4290';
   const suppliedPin = String(req.body?.pin || '').trim();
 
   if (!/^\d{4}$/.test(suppliedPin)) {
