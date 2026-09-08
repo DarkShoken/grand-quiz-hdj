@@ -13,9 +13,9 @@ for unit in grand-quiz-fact-factory.service grand-quiz-quality-auditor.service o
 done
 
 echo
-echo '===== ENV MODELES / ROUTAGE (secrets masqués) ====='
+echo '===== ENV MODELES / ROUTAGE (aucun secret) ====='
 if [ -f "$ENV" ]; then
-  grep -E '^(OLLAMA_URL|OLLAMA_MODEL|FAST_MODEL|QUALITY_MODEL|LOCAL_REVIEW_MODEL|AUTHOR_MODEL|REVIEW_MODEL|BATCH_SIZE|SLEEP_SECONDS|TARGET_|FACT_|QCM_|GEMMA_|ROUTER_|SEARXNG_)=' "$ENV" 2>/dev/null || true
+  grep -E '^(OLLAMA_URL|OLLAMA_MODEL|FAST_MODEL|QUALITY_MODEL|LOCAL_REVIEW_MODEL|AUTHOR_MODEL|REVIEW_MODEL|RECOVERY_MODEL|BATCH_SIZE|SLEEP_SECONDS|TARGET_[A-Z0-9_]+|FACT_[A-Z0-9_]+|QCM_[A-Z0-9_]+|GEMMA_[A-Z0-9_]+|ROUTER_[A-Z0-9_]+|SEARXNG_URL)=' "$ENV" 2>/dev/null || true
 else
   echo "$ENV absent"
 fi
