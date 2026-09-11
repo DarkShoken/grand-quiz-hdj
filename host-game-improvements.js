@@ -2,7 +2,7 @@
   const G = window.GrandQuiz;
   if (!G || typeof G.createTransport !== 'function') return;
 
-  const REVEAL_DURATION_MS = 5000;
+  const REVEAL_DURATION_MS = 15000;
   const STORAGE_PREFIX = 'grand-quiz-team-names:';
   const nouns = [
     'Patates', 'Flamants', 'Pingouins', 'Licornes', 'Castors', 'Loutres', 'Cactus',
@@ -108,12 +108,19 @@
     if (attempt < 10) setTimeout(() => clickNextWhenReady(attempt + 1), 100);
   }
 
-  function startFastReveal(questionId) {
+  function startStableReveal(questionId, nativeDeadline = null) {
     if (revealQuestionId === questionId && revealTimer) return;
     clearRevealTimers();
     revealQuestionId = questionId;
-    revealAt = Date.now() + REVEAL_DURATION_MS;
-    revealTimer = setTimeout(clickNextWhenReady, REVEAL_DURATION_MS + 40);
+
+    const now = Date.now();
+    const requestedDeadline = Number(nativeDeadline);
+    revealAt = Number.isFinite(requestedDeadline) && requestedDeadline > now
+      ? requestedDeadline
+      : now + REVEAL_DURATION_MS;
+
+    const delay = Math.max(0, revealAt - Date.now());
+    revealTimer = setTimeout(clickNextWhenReady, delay + 40);
     revealClock = setInterval(() => {
       if (latestPhase !== 'reveal') {
         clearRevealTimers();
@@ -145,8 +152,8 @@
     if (latestPhase === 'reveal') {
       ensureStableRevealTimer();
       const label = stage.querySelector('.host-auto-next span');
-      if (label && label.textContent !== '5 secondes pour commenter la réponse.') {
-        label.textContent = '5 secondes pour commenter la réponse.';
+      if (label && label.textContent !== '15 secondes pour commenter la réponse.') {
+        label.textContent = '15 secondes pour commenter la réponse.';
       }
 
       if (savedAnswerLog && savedAnswerQuestionId === activeQuestionId && !stage.querySelector('.preserved-answer-log')) {
@@ -209,7 +216,7 @@
         }
 
         if (payload.phase === 'reveal') {
-          if (revealQuestionId !== questionId || !revealAt) startFastReveal(questionId);
+          if (revealQuestionId !== questionId || !revealAt) startStableReveal(questionId, payload.revealDeadline);
           payload.revealDeadline = revealAt;
         } else if (previousPhase === 'reveal') {
           clearRevealTimers();
