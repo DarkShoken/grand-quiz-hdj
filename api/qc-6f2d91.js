@@ -1,4 +1,9 @@
-const MODELS = { lite: 'gemini-2.5-flash-lite', flash: 'gemini-2.5-flash' };
+const MODELS = {
+  lite: 'gemini-2.5-flash-lite',
+  flash: 'gemini-2.5-flash',
+  g35lite: 'gemini-3.5-flash-lite',
+  g35: 'gemini-3.5-flash'
+};
 const SUPABASE_URL = 'https://rkuxwkqdgrlqhajqxdtr.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_El_xyoQgJp6FddKYUWiY9w_VwTTVLEG';
 function text(v,max=220){return String(v??'').replace(/\s+/g,' ').trim().slice(0,max)}
