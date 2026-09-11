@@ -1,4 +1,4 @@
-const MODEL = 'gemini-2.5-flash';
+const MODELS = { lite: 'gemini-2.5-flash-lite', flash: 'gemini-2.5-flash' };
 const SUPABASE_URL = 'https://rkuxwkqdgrlqhajqxdtr.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_El_xyoQgJp6FddKYUWiY9w_VwTTVLEG';
 function text(v,max=220){return String(v??'').replace(/\s+/g,' ').trim().slice(0,max)}
@@ -12,6 +12,7 @@ module.exports=async function handler(req,res){
  if(req.method!=='GET')return res.status(405).json({error:'GET only'});
  if(!process.env.GEMINI_API_KEY)return res.status(503).json({error:'GEMINI_API_KEY missing'});
  const offset=Math.max(0,parseInt(req.query?.offset||'0',10)||0);const limit=Math.min(50,Math.max(1,parseInt(req.query?.limit||'50',10)||50));
+ const MODEL=MODELS[String(req.query?.model||'lite').toLowerCase()]||MODELS.lite;
  try{
   const read=await rpc('gq26_calibration_batch',{p_offset:offset,p_limit:limit});
   const items=read.data;if(!read.ok||!Array.isArray(items))return res.status(502).json({error:'batch read failed',status:read.status});
