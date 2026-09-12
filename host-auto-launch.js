@@ -15,6 +15,29 @@
   `;
   document.head.appendChild(style);
 
+  function cleanTvUrl() {
+    const G = window.GrandQuiz;
+    const room = G.cleanRoom(document.getElementById('roomInput')?.value || G.qs('room', 'QUIZ'));
+    const url = new URL('https://grand-quiz-hdj.vercel.app/tv-clean.html');
+    url.searchParams.set('room', room);
+    url.searchParams.set('build', 'clean1');
+    return url.href;
+  }
+
+  function refreshTvLink() {
+    const link = document.getElementById('screenLink');
+    if (link) link.href = cleanTvUrl();
+  }
+
+  document.getElementById('screenLink')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    window.open(cleanTvUrl(), '_blank', 'noopener');
+  }, true);
+  document.getElementById('roomInput')?.addEventListener('input', refreshTvLink);
+  document.getElementById('roomInput')?.addEventListener('change', refreshTvLink);
+  refreshTvLink();
+  setTimeout(refreshTvLink, 400);
+
   let launching = false;
 
   function normalizeButtonText() {
