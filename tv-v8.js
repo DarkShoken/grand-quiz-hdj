@@ -199,7 +199,6 @@
   function renderQuestion() {
     const question = currentState.question;
     if (!question) return;
-    const meta = `<div class="question-meta"><span class="badge">Question ${currentState.questionNumber}/${currentState.totalQuestions}</span><span class="badge">${G.escapeHtml(question.category)}</span><span class="badge">${G.escapeHtml(question.difficulty)}</span></div>`;
     let body = '';
 
     if (question.type === 'mcq' || question.type === 'truefalse') {
@@ -210,7 +209,7 @@
       body = `<div class="buzzer-instruction pulse">🚨 BUZZEZ !</div><div class="explanation buzzer-status">${currentState.buzzedPlayer ? `Le plus rapide : <strong>${G.escapeHtml(currentState.buzzedPlayer)}</strong>` : 'Le premier qui buzze obtient la main.'}</div>`;
     }
 
-    stage.innerHTML = `<article class="question-card ${compactClass(question)}">${meta}<div class="question-text">${G.escapeHtml(question.question)}</div>${body}${question.type !== 'buzzer' ? `<div class="timer-wrap"><div id="timerValue" class="timer">${Math.ceil((currentState.durationMs || 20000) / 1000)}</div><div class="progress"><i id="timerBar"></i></div></div>` : ''}</article>`;
+    stage.innerHTML = `<article class="question-card ${compactClass(question)}"><div class="question-text">${G.escapeHtml(question.question)}</div>${body}${question.type !== 'buzzer' ? `<div class="timer-wrap"><div id="timerValue" class="timer">${Math.ceil((currentState.durationMs || 20000) / 1000)}</div><div class="progress"><i id="timerBar"></i></div></div>` : ''}</article>`;
     if (question.type !== 'buzzer') startQuestionTimer();
   }
 
@@ -234,7 +233,7 @@
     if ((question.type === 'mcq' || question.type === 'truefalse') && question.options) {
       options = `<div class="answer-grid reveal-grid">${question.options.map((option, index) => `<div class="answer-tile ${['a', 'b', 'c', 'd'][index] || 'a'} ${index === currentState.correctIndex ? 'correct' : ''}">${G.escapeHtml(option)}</div>`).join('')}</div>`;
     }
-    stage.innerHTML = `<article class="question-card reveal-card ${compactClass(question)}"><div class="question-meta"><span class="badge">Réponse</span><span class="badge">${G.escapeHtml(question.category)}</span></div><div class="question-text">${G.escapeHtml(question.question)}</div>${options}<div class="reveal-answer">✅ ${G.escapeHtml(correct)}</div><div class="explanation reveal-explanation">${G.escapeHtml(question.explanation || '')}</div><div class="reveal-auto-countdown"><div id="tvRevealTimer" class="timer reveal-timer">15</div><div class="reveal-auto-label">Prochaine question</div></div></article>`;
+    stage.innerHTML = `<article class="question-card reveal-card ${compactClass(question)}"><div class="question-text">${G.escapeHtml(question.question)}</div>${options}<div class="reveal-answer">✅ ${G.escapeHtml(correct)}</div><div class="explanation reveal-explanation">${G.escapeHtml(question.explanation || '')}</div><div class="reveal-auto-countdown"><div id="tvRevealTimer" class="timer reveal-timer">15</div><div class="reveal-auto-label">Prochaine question</div></div></article>`;
     if (currentState.celebrate) G.confetti(70);
     startRevealTimer();
   }
