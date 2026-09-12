@@ -1,0 +1,122 @@
+/* Écran TV : base stable, paysage, sans colonnes latérales ni hauteur forcée. */
+html,body{width:100%;height:100%;overflow:hidden}
+
+#gameView.tv-stage{
+  position:static!important;
+  inset:auto!important;
+  width:100%!important;
+  height:100dvh!important;
+  min-width:0!important;
+  min-height:0!important;
+  max-width:none!important;
+  max-height:none!important;
+  margin:0!important;
+  padding:10px 18px!important;
+  transform:none!important;
+  display:grid!important;
+  grid-template-rows:42px minmax(0,1fr) 42px!important;
+  overflow:hidden!important;
+}
+
+#gameView .tv-top{
+  display:grid!important;
+  grid-template-columns:minmax(160px,1fr) minmax(0,2fr) minmax(160px,1fr)!important;
+  align-items:center!important;
+  gap:12px!important;
+  min-height:0!important;
+}
+#gameView .tv-title{display:block!important;white-space:nowrap!important;font-weight:1000}
+#gameView .answer-count{display:block!important;text-align:right!important;white-space:nowrap!important;font-weight:900}
+#gameView .tv-context-bar{display:flex!important;justify-content:center!important;align-items:center!important;gap:8px!important;min-width:0!important;overflow:hidden!important}
+#gameView .tv-context-bar .badge{padding:5px 10px!important;font-size:clamp(.76rem,1.35vh,.92rem)!important;line-height:1!important;white-space:nowrap!important;max-width:45vw!important;overflow:hidden!important;text-overflow:ellipsis!important}
+#gameView .tv-context-category{background:rgba(76,201,240,.17)!important;color:#c5f1ff!important;border:1px solid rgba(76,201,240,.34)!important}
+#gameView .tv-context-difficulty{background:rgba(255,209,102,.16)!important;color:#ffe8a8!important;border:1px solid rgba(255,209,102,.32)!important}
+
+#gameView #stage{
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  overflow:hidden!important;
+}
+
+#gameView .question-card{
+  position:relative!important;
+  width:min(1180px,100%)!important;
+  height:auto!important;
+  min-height:0!important;
+  max-height:100%!important;
+  max-width:1180px!important;
+  aspect-ratio:auto!important;
+  margin:0 auto!important;
+  padding:clamp(12px,1.8vh,20px)!important;
+  border-radius:28px!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:center!important;
+  overflow:hidden!important;
+  transform:none!important;
+}
+
+/* Tue définitivement tous les anciens blocs latéraux / métadonnées héritées. */
+#gameView .question-meta,
+#gameView .question-side-meta,
+#gameView .question-side-pill,
+#gameView .question-context-leading,
+#gameView .question-context-category:not(.tv-context-category){display:none!important}
+
+#gameView .question-text{
+  width:100%!important;
+  max-width:1120px!important;
+  height:auto!important;
+  min-height:0!important;
+  margin:clamp(5px,.8vh,9px) auto clamp(9px,1.4vh,14px)!important;
+  line-height:1.05!important;
+  text-align:center!important;
+}
+
+#gameView .answer-grid{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  grid-template-rows:repeat(2,minmax(0,1fr))!important;
+  gap:clamp(8px,1.2vh,12px)!important;
+  width:100%!important;
+  height:clamp(300px,46vh,470px)!important;
+  min-height:0!important;
+  max-height:none!important;
+}
+#gameView .answer-grid:not(:has(.answer-tile:nth-child(3))){
+  grid-template-rows:minmax(0,1fr)!important;
+  height:clamp(155px,23vh,235px)!important;
+}
+#gameView .answer-tile{
+  min-width:0!important;
+  min-height:0!important;
+  height:100%!important;
+  padding:clamp(8px,1.2vh,13px)!important;
+  display:grid!important;
+  place-items:center!important;
+  text-align:center!important;
+  overflow:hidden!important;
+  border-radius:20px!important;
+}
+
+#gameView .timer-wrap{margin-top:clamp(6px,1vh,10px)!important;flex:0 0 auto!important}
+#gameView .timer,#gameView .reveal-timer{font-variant-numeric:tabular-nums!important;font-feature-settings:'tnum' 1!important}
+
+#gameView .reveal-card .answer-grid{height:clamp(180px,25vh,275px)!important}
+#gameView .reveal-card .answer-grid:not(:has(.answer-tile:nth-child(3))){height:clamp(95px,13vh,145px)!important}
+
+#gameView .tv-bottom{min-height:0!important;gap:12px!important;align-items:center!important;flex-wrap:nowrap!important;padding:4px 0 0!important}
+
+/* Même avec zoom Windows/Chrome élevé, l'écran TV reste en grille 2x2 et ne devient pas une UI mobile. */
+@media(max-width:820px){
+  #gameView.tv-stage{padding:8px 10px!important;grid-template-rows:38px minmax(0,1fr) 38px!important}
+  #gameView .tv-top{grid-template-columns:minmax(110px,1fr) minmax(0,2fr) minmax(110px,1fr)!important}
+  #gameView .tv-title,#gameView .answer-count{display:block!important;font-size:.78rem!important}
+  #gameView .question-card{width:100%!important;height:auto!important;padding:10px!important}
+  #gameView .answer-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
