@@ -94,8 +94,6 @@
   }
 
   function appBaseUrl() {
-    // Les URLs de déploiement Vercel (grand-quiz-xxxx.vercel.app) sont immuables.
-    // Tous les liens internes doivent donc revenir vers l'alias de production courant.
     if (/\.vercel\.app$/i.test(location.hostname)) return `${PRODUCTION_ORIGIN}/`;
     return new URL('./', location.href).href;
   }
@@ -108,7 +106,11 @@
 
   function makePlayUrl(room) { return makeAppUrl('play.html', room); }
   function makeHostUrl(room) { return makeAppUrl('host.html', room); }
-  function makeScreenUrl(room) { return makeAppUrl('index.html', room); }
+  function makeScreenUrl(room) {
+    const url = new URL(makeAppUrl('tv-clean.html', room));
+    url.searchParams.set('build', 'clean1');
+    return url.href;
+  }
 
   function shuffle(array) {
     const a = [...array];
