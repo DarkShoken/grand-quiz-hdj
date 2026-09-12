@@ -121,5 +121,4 @@
     .media-clues-list{display:grid;gap:9px;text-align:left}.media-clue{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;background:rgba(255,255,255,.07);font-size:clamp(17px,1.65vw,24px);animation:clueIn .28s ease-out}.media-clue span{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:rgba(47,107,255,.25);font-weight:900}@keyframes clueIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
   `;
   document.head.appendChild(style);
-  new MutationObserver(queuePatch).observe(document.documentElement, { childList: true, subtree: true });
 })();
