@@ -53,8 +53,6 @@
 
     if (latest.phase !== 'question') return;
 
-    // tv-v8 traite historiquement tout ce qui n'est ni QCM ni numérique comme un buzzer.
-    // Les réponses libres doivent au contraire laisser le temps d'écrire sur le téléphone.
     if (q.type === 'free') {
       const buzzer = card.querySelector('.buzzer-instruction');
       if (buzzer) {
@@ -105,5 +103,4 @@
     .free-answer-status{text-align:center;opacity:.8}
   `;
   document.head.appendChild(style);
-  new MutationObserver(queuePatch).observe(document.documentElement, { childList: true, subtree: true });
 })();
