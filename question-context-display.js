@@ -118,13 +118,14 @@
 
   const style = document.createElement('style');
   style.textContent = `
-    /* TV : aucune métadonnée dans la carte question. */
     #stage .question-meta{display:none!important}
-    .tv-top{grid-template-columns:auto minmax(0,1fr) auto!important;gap:10px!important;align-items:center!important}
-    .tv-context-bar{min-width:0;display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:nowrap;overflow:hidden}
-    .tv-context-bar .badge{flex:0 1 auto;min-width:0;padding:5px 9px!important;font-size:clamp(.7rem,1.35vh,.86rem)!important;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .tv-top{grid-template-columns:auto minmax(0,1fr) auto!important;gap:12px!important;align-items:center!important}
+    .tv-title{display:block!important;white-space:nowrap}
+    .answer-count{display:block!important;white-space:nowrap}
+    .tv-context-bar{min-width:0;display:flex;justify-content:center;align-items:center;gap:7px;flex-wrap:nowrap;overflow:hidden}
+    .tv-context-bar .badge{flex:0 1 auto;min-width:0;padding:5px 10px!important;font-size:clamp(.72rem,1.35vh,.9rem)!important;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .tv-context-bar .question-context-leading{flex:0 0 auto;background:rgba(255,255,255,.08)!important;color:#fff!important}
-    .tv-context-bar .question-context-category{max-width:min(48vw,560px)}
+    .tv-context-bar .question-context-category{max-width:min(42vw,560px)}
     .tv-context-bar .question-context-difficulty{flex:0 0 auto}
     .tv-room-accessible{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 
@@ -133,14 +134,6 @@
     .question-context-mobile,.question-context-host-reveal{display:flex;justify-content:center;gap:7px;flex-wrap:wrap;margin:0 0 10px}
     .question-context-mobile .badge{font-size:.8rem;padding:6px 9px}
     .question-context-host-reveal{justify-content:flex-start;margin-bottom:10px}
-
-    @media(max-width:1000px){
-      .tv-top{grid-template-columns:1fr!important}
-      .tv-title,.answer-count{display:none!important}
-      .tv-context-bar{justify-content:center;gap:6px;width:100%}
-      .tv-context-bar .badge{font-size:clamp(.72rem,1.55vh,.9rem)!important;padding:5px 8px!important}
-      .tv-context-bar .question-context-category{max-width:58vw}
-    }
   `;
   document.head.appendChild(style);
 
@@ -172,21 +165,11 @@
     return transport;
   };
 
-  const startObserver = () => {
-    new MutationObserver((mutations) => {
-      const hasLegacyMeta = mutations.some((mutation) =>
-        [...mutation.addedNodes].some((node) =>
-          node.nodeType === Node.ELEMENT_NODE &&
-          (node.matches?.('#stage .question-meta, .question-meta') || node.querySelector?.('#stage .question-meta, .question-meta'))
-        )
-      );
-      if (hasLegacyMeta) removeLegacyTvMeta();
-      schedulePatch();
-    }).observe(document.body, { childList: true, subtree: true });
+  const start = () => {
     removeLegacyTvMeta();
     schedulePatch();
   };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startObserver, { once: true });
-  else startObserver();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
 })();
