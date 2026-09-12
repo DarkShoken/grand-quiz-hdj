@@ -121,8 +121,8 @@
     const meta = card.querySelector('.question-meta');
     const timer = card.querySelector('.timer-wrap');
     const isReveal = card.classList.contains('reveal-card');
-    const viewportHeight = Math.max(480, window.innerHeight || 720);
-    const viewportWidth = Math.max(640, window.innerWidth || 1280);
+    const viewportHeight = Math.max(360, card.clientHeight || window.innerHeight || 720);
+    const viewportWidth = Math.max(640, card.clientWidth || window.innerWidth || 1280);
 
     question.style.display = 'grid';
     question.style.placeItems = 'center';
@@ -130,10 +130,10 @@
     question.style.overflow = 'hidden';
 
     if (isReveal) {
-      const answerMax = Math.min(62, viewportHeight * 0.058, viewportWidth * 0.045);
-      const answerMin = Math.max(24, Math.min(34, viewportHeight * 0.033));
+      const answerMax = Math.min(62, viewportHeight * 0.08, viewportWidth * 0.045);
+      const answerMin = Math.max(22, Math.min(32, viewportHeight * 0.05));
       const answerSize = largestFont(answerItems, answerMin, answerMax);
-      const questionTarget = clamp(answerSize * 0.88, 28, 52);
+      const questionTarget = clamp(answerSize * 0.88, 26, 50);
       question.style.height = 'auto';
       question.style.fontSize = `${questionTarget}px`;
       question.style.lineHeight = '1.03';
@@ -142,11 +142,11 @@
 
     const cardStyle = getComputedStyle(card);
     const paddingY = parseFloat(cardStyle.paddingTop || 0) + parseFloat(cardStyle.paddingBottom || 0);
-    const stageHeight = Math.max(360, stage?.clientHeight || card.clientHeight || viewportHeight * 0.82);
+    const stageHeight = Math.max(320, card.clientHeight || stage?.clientHeight || viewportHeight);
     const metaHeight = meta?.getBoundingClientRect().height || 0;
     const timerHeight = timer?.getBoundingClientRect().height || 0;
-    const structuralGaps = clamp(stageHeight * 0.025, 14, 24);
-    const available = Math.max(250, stageHeight - paddingY - metaHeight - timerHeight - structuralGaps);
+    const structuralGaps = clamp(stageHeight * 0.025, 12, 22);
+    const available = Math.max(230, stageHeight - paddingY - metaHeight - timerHeight - structuralGaps);
 
     const questionLength = question.textContent.trim().length;
     const longestAnswer = Math.max(...answerItems.map((item) => item.textContent.trim().length), 1);
@@ -163,10 +163,10 @@
     if (answerCount <= 2) questionShare = Math.max(questionShare, 0.43);
     questionShare = clamp(questionShare, 0.29, 0.46);
 
-    const contentGap = clamp(stageHeight * 0.012, 8, 14);
+    const contentGap = clamp(stageHeight * 0.012, 7, 12);
     let questionHeight = Math.round(available * questionShare);
-    questionHeight = clamp(questionHeight, 92, Math.max(92, available - 190));
-    const gridHeight = Math.max(170, available - questionHeight - contentGap);
+    questionHeight = clamp(questionHeight, 78, Math.max(78, available - 160));
+    const gridHeight = Math.max(145, available - questionHeight - contentGap);
 
     question.style.height = `${questionHeight}px`;
     question.style.marginTop = '0';
@@ -174,10 +174,10 @@
     grid.style.height = `${gridHeight}px`;
     grid.style.maxHeight = 'none';
 
-    const questionMin = Math.max(30, Math.min(40, viewportHeight * 0.04));
-    const questionMax = Math.min(76, viewportHeight * 0.078, viewportWidth * 0.06);
-    const answerMin = Math.max(24, Math.min(38, viewportHeight * 0.04));
-    const answerMax = Math.min(88, viewportHeight * 0.09, viewportWidth * 0.065);
+    const questionMin = Math.max(25, Math.min(36, viewportHeight * 0.065));
+    const questionMax = Math.min(72, viewportHeight * 0.12, viewportWidth * 0.06);
+    const answerMin = Math.max(22, Math.min(34, viewportHeight * 0.06));
+    const answerMax = Math.min(84, viewportHeight * 0.14, viewportWidth * 0.065);
 
     let questionSize = largestFont([question], questionMin, questionMax, 1.02);
     let answerSize = largestFont(answerItems, answerMin, answerMax, 1.02);
@@ -219,7 +219,6 @@
 
   function fitAll() {
     scheduledFrame = null;
-
     document.querySelectorAll('.question-card').forEach(fitTvQuestionCard);
     document.querySelectorAll('.mobile-options').forEach(fitMobileCard);
   }
@@ -232,24 +231,21 @@
   }
 
   const TIMER_SELECTORS = '.timer-wrap, .reveal-auto-countdown, .host-auto-next, #timerValue, #tvRevealTimer, #hostRevealTimer';
+  const STRUCTURAL_SELECTORS = '.question-card, .answer-grid, .answer-tile, .player-card, .mobile-options, .mobile-option';
 
   const observer = new MutationObserver((mutations) => {
     const shouldRefit = mutations.some((mutation) => {
       const rawTarget = mutation.target;
       const target = rawTarget?.nodeType === Node.ELEMENT_NODE ? rawTarget : rawTarget?.parentElement;
-      if (!target) return false;
+      if (!target || target.closest?.(TIMER_SELECTORS)) return false;
 
-      // Les chronos changent très souvent. Ils ne modifient pas la géométrie utile
-      // de la question et ne doivent surtout pas relancer le coûteux calcul de fontes.
-      if (target.closest?.(TIMER_SELECTORS)) return false;
-
-      if (target.matches?.('#stage') || target.closest?.('#stage, .player-card')) return true;
+      if (target.matches?.('#stage, #app')) return true;
 
       const nodes = [...mutation.addedNodes, ...mutation.removedNodes];
       return nodes.some((node) =>
         node.nodeType === Node.ELEMENT_NODE && (
-          node.matches?.('.question-card, .player-card, .mobile-options') ||
-          node.querySelector?.('.question-card, .player-card, .mobile-options')
+          node.matches?.(STRUCTURAL_SELECTORS) ||
+          node.querySelector?.(STRUCTURAL_SELECTORS)
         )
       );
     });
@@ -258,7 +254,7 @@
   });
 
   function start() {
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     scheduleFit();
     document.fonts?.ready?.then(scheduleFit).catch(() => {});
   }
