@@ -1,4 +1,6 @@
 (() => {
+  const PRODUCTION_ORIGIN = 'https://grand-quiz-hdj.vercel.app';
+
   const cleanRoom = (value) => {
     const cleaned = (value || 'QUIZ')
       .toUpperCase()
@@ -90,12 +92,24 @@
     url.searchParams.set('room', cleanRoom(room));
     history.replaceState({}, '', url);
   }
-  function makePlayUrl(room) {
-    return new URL(`play.html?room=${encodeURIComponent(cleanRoom(room))}`, location.href).href;
+
+  function appBaseUrl() {
+    // Les URLs de déploiement Vercel (grand-quiz-xxxx.vercel.app) sont immuables.
+    // Tous les liens internes doivent donc revenir vers l'alias de production courant.
+    if (/\.vercel\.app$/i.test(location.hostname)) return `${PRODUCTION_ORIGIN}/`;
+    return new URL('./', location.href).href;
   }
-  function makeHostUrl(room) {
-    return new URL(`host.html?room=${encodeURIComponent(cleanRoom(room))}`, location.href).href;
+
+  function makeAppUrl(path, room) {
+    const url = new URL(path, appBaseUrl());
+    url.searchParams.set('room', cleanRoom(room));
+    return url.href;
   }
+
+  function makePlayUrl(room) { return makeAppUrl('play.html', room); }
+  function makeHostUrl(room) { return makeAppUrl('host.html', room); }
+  function makeScreenUrl(room) { return makeAppUrl('index.html', room); }
+
   function shuffle(array) {
     const a = [...array];
     for (let i = a.length - 1; i > 0; i -= 1) {
@@ -121,5 +135,5 @@
     }
   }
 
-  window.GrandQuiz = { cleanRoom, uid, createTransport, qs, setRoomInUrl, makePlayUrl, makeHostUrl, shuffle, escapeHtml, confetti, hasSupabaseConfig };
+  window.GrandQuiz = { cleanRoom, uid, createTransport, qs, setRoomInUrl, makePlayUrl, makeHostUrl, makeScreenUrl, shuffle, escapeHtml, confetti, hasSupabaseConfig };
 })();
