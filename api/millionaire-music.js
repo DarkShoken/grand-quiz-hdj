@@ -8,10 +8,20 @@ function loadAudio() {
 
   const sourcePath = path.join(process.cwd(), 'millionaire-audio-data.js');
   const source = fs.readFileSync(sourcePath, 'utf8');
-  const match = source.match(/base64,([^']+)'/);
-  if (!match?.[1]) throw new Error('Millionaire audio payload not found');
+  const stringParts = [...source.matchAll(/'([^']*)'/g)].map((match) => match[1]);
+  const joined = stringParts.join('');
+  const marker = 'base64,';
+  const markerIndex = joined.indexOf(marker);
 
-  cachedAudio = Buffer.from(match[1], 'base64');
+  if (markerIndex < 0) throw new Error('Millionaire audio payload not found');
+
+  const payload = joined.slice(markerIndex + marker.length).replace(/\s+/g, '');
+  cachedAudio = Buffer.from(payload, 'base64');
+
+  if (cachedAudio.length < 100000) {
+    throw new Error(`Millionaire audio payload incomplete (${cachedAudio.length} bytes)`);
+  }
+
   return cachedAudio;
 }
 
