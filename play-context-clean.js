@@ -5,37 +5,66 @@
 
   let latest = null;
   let queued = false;
+  let lastQuestionKey = '';
 
-  function patch() {
+  function ensureContext() {
     queued = false;
-    if (!latest || latest.phase !== 'question' || !latest.question) return;
+    if (!latest || latest.phase !== 'question' || !latest.question) {
+      lastQuestionKey = '';
+      return;
+    }
+
     const meta = document.querySelector('#app .mobile-meta');
     if (!meta) return;
 
     const category = String(latest.question.category || '').trim();
     const difficulty = String(latest.question.difficulty || '').trim();
-    const existingStatus = meta.querySelector('.answer-status');
-    const statusText = existingStatus?.textContent || '';
+    const questionId = String(latest.question.id || '');
+    const key = `${questionId}|${category}|${difficulty}`;
 
-    const categoryNode = document.createElement('span');
-    categoryNode.className = 'badge play-category';
-    categoryNode.textContent = `📚 ${category || 'Catégorie'}`;
+    let categoryNode = meta.querySelector('.play-category');
+    let difficultyNode = meta.querySelector('.play-difficulty');
+    let statusNode = meta.querySelector('.answer-status');
 
-    const difficultyNode = document.createElement('span');
-    difficultyNode.className = 'badge play-difficulty';
-    difficultyNode.textContent = `🎯 ${difficulty || 'Difficulté'}`;
+    // Si player-v6 vient de créer le DOM d'une nouvelle question, on convertit
+    // la ligne de métadonnées une seule fois. Aucun replaceChildren ensuite.
+    if (!categoryNode || !difficultyNode) {
+      const oldStatusText = statusNode?.textContent || '';
+      const questionBadge = [...meta.children].find((node) =>
+        !node.classList.contains('answer-status') && /Question\s+\d+/i.test(node.textContent || '')
+      );
+      questionBadge?.remove();
 
-    const statusNode = document.createElement('span');
-    statusNode.className = 'badge answer-status';
-    statusNode.textContent = /Question\s+\d+/i.test(statusText) || statusText === category ? '' : statusText;
+      categoryNode = document.createElement('span');
+      categoryNode.className = 'badge play-category';
 
-    meta.replaceChildren(categoryNode, difficultyNode, statusNode);
+      difficultyNode = document.createElement('span');
+      difficultyNode.className = 'badge play-difficulty';
+
+      if (!statusNode) {
+        statusNode = document.createElement('span');
+        statusNode.className = 'badge answer-status';
+        statusNode.textContent = oldStatusText;
+      }
+
+      meta.insertBefore(categoryNode, statusNode || null);
+      meta.insertBefore(difficultyNode, statusNode || null);
+    }
+
+    // Ne touche au DOM que lorsque la question/catégorie/difficulté change.
+    if (key !== lastQuestionKey) {
+      const categoryText = `📚 ${category || 'Catégorie'}`;
+      const difficultyText = `🎯 ${difficulty || 'Difficulté'}`;
+      if (categoryNode.textContent !== categoryText) categoryNode.textContent = categoryText;
+      if (difficultyNode.textContent !== difficultyText) difficultyNode.textContent = difficultyText;
+      lastQuestionKey = key;
+    }
   }
 
   function schedule() {
     if (queued) return;
     queued = true;
-    requestAnimationFrame(() => requestAnimationFrame(patch));
+    requestAnimationFrame(ensureContext);
   }
 
   const originalCreateTransport = G.createTransport.bind(G);
