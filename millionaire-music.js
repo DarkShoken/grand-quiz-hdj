@@ -1,7 +1,5 @@
 (() => {
-  const source = window.GRAND_QUIZ_MILLIONAIRE_AUDIO;
-  if (!source) return;
-
+  const source = '/api/millionaire-music?v=1';
   const audio = new Audio(source);
   audio.loop = true;
   audio.preload = 'auto';
@@ -12,6 +10,8 @@
   let pausedByGame = false;
   let currentPhase = 'lobby';
   let startAttempted = false;
+  let userActivated = false;
+  let lastError = null;
 
   async function playFromStart(reset = false) {
     if (!enabled) return false;
@@ -22,17 +22,20 @@
       await audio.play();
       active = true;
       startAttempted = true;
+      lastError = null;
       return true;
     } catch (error) {
       active = false;
       startAttempted = true;
-      console.info('Lecture automatique de la musique bloquée par le navigateur.', error?.name || error);
+      lastError = error;
+      console.error('Lecture de la musique impossible', error);
       return false;
     }
   }
 
   async function start() {
     enabled = true;
+    userActivated = true;
     pausedByGame = false;
     return playFromStart(false);
   }
@@ -48,10 +51,12 @@
   async function toggle() {
     if (!enabled || audio.paused) {
       enabled = true;
+      userActivated = true;
       pausedByGame = false;
       return playFromStart(false);
     }
     enabled = false;
+    userActivated = false;
     stop(false);
     return false;
   }
@@ -70,9 +75,16 @@
 
     currentPhase = phase;
 
-    if (['lobby', 'setup', 'preview', 'finished'].includes(phase)) {
+    if (phase === 'finished') {
       stop(true);
       pausedByGame = false;
+      return;
+    }
+
+    // Un clic manuel dans le lobby sert aussi de test son et débloque l'autoplay.
+    // On laisse donc la musique audible jusqu'au démarrage de la partie.
+    if (['lobby', 'setup', 'preview'].includes(phase)) {
+      if (!userActivated) stop(true);
       return;
     }
 
@@ -92,28 +104,33 @@
     }
 
     if (startsGame) {
-      // Nouvelle partie : repartir exactement au début du thème.
-      playFromStart(true);
+      if (enabled) playFromStart(true);
       return;
     }
 
-    // Si la page TV a été ouverte/rechargée en cours de partie, reprendre le fond musical.
     if (enabled && ['question', 'reveal', 'leaderboard'].includes(phase) && audio.paused && startAttempted) {
       playFromStart(false);
     }
   }
 
-  audio.addEventListener('play', () => { active = true; });
+  audio.addEventListener('play', () => { active = true; lastError = null; });
   audio.addEventListener('pause', () => { active = false; });
+  audio.addEventListener('error', () => {
+    active = false;
+    lastError = audio.error || new Error('Erreur audio inconnue');
+    console.error('Erreur de chargement du MP3', audio.error);
+  });
 
   window.GrandQuizMusic = {
     start,
-    stop: () => { enabled = false; stop(false); },
+    stop: () => { enabled = false; userActivated = false; stop(false); },
     toggle,
     setVolume,
     sync,
     get enabled() { return enabled && !audio.paused; },
     get available() { return true; },
     get active() { return active; },
+    get lastError() { return lastError; },
+    get source() { return source; },
   };
 })();
