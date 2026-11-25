@@ -7,7 +7,7 @@ l'animateur compte les « +1 » à l'écran.
 
 ## Utilisation
 1. Récupérer ce dossier (branche `vibe/hs-formats-locaux-8583c3`) : ZIP de la branche, ou `git clone --branch vibe/hs-formats-locaux-8583c3 --depth 1 https://github.com/DarkShoken/grand-quiz-hdj.git`
-2. Ouvrir `hs-tests/index.html` en double-cliquant : fonctionne hors ligne.
+2. Ouvrir `hs-tests/atelier-habiletes-sociales.html` en double-cliquant : fonctionne hors ligne.
 3. Onglet « Accueil » : coller vos questions (une par ligne, format `thème | question | relance`) puis « Charger mes questions ».
 
 ## Formats à tester
