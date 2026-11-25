@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier habiletés sociales — maquette locale</title>
+<style>
+:root{--ink:#1c1917;--bg:#f5f5f4;--card:#ffffff;--line:#d6d3d1;--acc:#1d4ed8;--ok:#15803d;--bad:#b91c1c;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:18px;line-height:1.5}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:.8rem 1rem;position:sticky;top:0;z-index:5}
+h1{font-size:1.25rem;margin:0 0 .5rem}
+h2{font-size:1.15rem;margin:.2rem 0 .7rem}
+h3{font-size:1.05rem;margin:.8rem 0 .4rem}
+.bar{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-top:.4rem}
+nav{display:flex;flex-wrap:wrap;gap:.4rem;padding:.6rem 1rem;background:var(--card);border-bottom:1px solid var(--line)}
+nav button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:.55rem .9rem;font-size:1rem;cursor:pointer}
+nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+main{max-width:980px;margin:0 auto;padding:1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.2rem;margin-bottom:1rem}
+button{cursor:pointer;font-size:1.05rem;border-radius:10px;padding:.6rem 1rem;border:1px solid var(--line);background:#fff;color:var(--ink)}
+button.primary{background:var(--acc);color:#fff;border-color:var(--acc)}
+button.ghost{background:transparent}
+.q{font-size:1.5rem;font-weight:600;margin:.3rem 0 .8rem}
+.rel{color:#44403c;background:#fafaf9;border-left:4px solid var(--acc);padding:.6rem .9rem;border-radius:8px;margin-top:.6rem}
+.opt{display:block;width:100%;text-align:left;margin:.4rem 0;padding:.8rem 1rem;font-size:1.15rem}
+.votegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.5rem;margin:.5rem 0 .8rem;align-items:center}
+.votegrid button.sel{background:#dbeafe;border-color:var(--acc);font-weight:700}
+.bars{margin:.8rem 0}
+.bar-row{display:flex;align-items:center;gap:.6rem;margin:.3rem 0}
+.bar-row .lbl{width:2.2rem;font-weight:700}
+.bar-row .tr{flex:1;background:#ececea;border-radius:6px;height:1.6rem;overflow:hidden}
+.bar-row .fl{display:block;height:100%;background:var(--acc)}
+.bar-row .cnt{width:2rem;text-align:right}
+.bar-row.maj .fl{background:var(--ok)}
+input,select,textarea{font:inherit;padding:.5rem .6rem;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+textarea{width:100%;min-height:5rem}
+.chips{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.chip{border:2px solid var(--line);border-radius:999px;padding:.4rem .9rem;background:#fff;font-weight:600}
+.chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.timer{font-size:1.6rem;font-variant-numeric:tabular-nums;font-weight:700}
+ul.tight{margin:.4rem 0;padding-left:1.2rem}
+ul.tight li{margin:.25rem 0}
+.small{font-size:.95rem;color:#57534e}
+.face{margin:.4rem 0 .8rem}
+.feedback{font-weight:700;font-size:1.2rem}
+.feedback.ok{color:var(--ok)}
+.feedback.ko{color:var(--bad)}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:640px){.cols2{grid-template-columns:1fr}}
+code{background:#ececea;padding:.1rem .35rem;border-radius:6px;font-size:.9em}
+</style>
+</head>
+<body>
+<header>
+<h1>Atelier habiletés sociales — maquette locale (fonctionne hors ligne, sur ce PC uniquement)</h1>
+<div class="bar">
+  <label>Thème <select id="themeSel"></select></label>
+  <button class="primary" onclick="drawNext()">Question suivante</button>
+  <button onclick="resetPioche()">Réinitialiser la pioche</button>
+  <span id="progress" class="small"></span>
+</div>
+<div class="bar">
+  <span class="small">Séance n°</span><input id="snum" type="number" min="1" value="1" style="width:4.5rem">
+  <button onclick="newSession()">Séance suivante</button>
+  <span class="small">Minuteur</span>
+  <input id="tmin" type="number" min="0" max="90" value="10" style="width:4rem"><span class="small">min</span>
+  <button onclick="timerStart()">Démarrer</button><button onclick="timerPause()">Pause</button><button onclick="timerReset()">Reset</button>
+  <span id="tdisp" class="timer">10:00</span>
+</div>
+<div class="bar">
+  <span class="small">Jeton de parole :</span><span id="jetons" class="chips"></span>
+  <label class="small">Nb de patients <select id="pcount" onchange="setPcount(this.value)"><option>2</option><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option><option>8</option></select></label>
+</div>
+</header>
+<nav id="modes"></nav>
+<main id="app"></main>
+<script src="questions.js"></script>
+<script>
+const LS_S="hs_local_state_v1", LS_C="hs_local_custom_q_v1";
+let custom=JSON.parse(localStorage.getItem(LS_C)||"null");
+let QS=(custom&&custom.length)?custom:QUESTIONS;
+let state=JSON.parse(localStorage.getItem(LS_S)||"null")||{done:[],scripts:[],snum:1,emoScore:0};
+let mode="accueil", theme="Tous", current=null;
+let qcmVotes={}, echVotes={}, det={pour:[],contre:[],interps:[],votes:{}}, conse=[], scriptsNow=[];
+let emoIdx=0;
+let pcount=5, jeton=0, tsec=600, tint=null;
+
+const MODES=[["accueil","Accueil"],["qcm","QCM ensemble"],["conseil","Conseil à un ami"],["script","Script à compléter"],["emotions","Émotions"],["detective","Détective"],["echelle","Échelle 1-5"],["bilan","Bilan"]];
+
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function save(){localStorage.setItem(LS_S,JSON.stringify(state));}
+function themes(){const s=new Set(QS.map(q=>q.t));return ["Tous",...s];}
+function pool(){const d=new Set(state.done);return QS.map((q,i)=>({q,i})).filter(x=>!d.has(x.i)&&(theme==="Tous"||x.q.t===theme));}
+function drawNext(){const p=pool();if(!p.length){current=null;render();return;}const x=p[Math.floor(Math.random()*p.length)];current=x.i;state.done.push(x.i);save();qcmVotes={};echVotes={};det={pour:[],contre:[],interps:[],votes:{}};conse=[];scriptsNow=[];render();}
+function resetPioche(){state.done=[];save();render();}
+function go(m){mode=m;render();}
+function newSession(){state.snum++;save();render();}
+
+function qCard(){
+ if(current==null)return '<div class="card"><p class="small">Cliquez sur « Question suivante » en haut pour tirer une question du thème sélectionné.</p></div>';
+ const q=QS[current];
+ return '<div class="card"><div class="small">Thème : '+esc(q.t)+'</div><div class="q">'+esc(q.q)+'</div><button onclick="toggleRel()">Afficher la relance</button><div id="rel" class="rel" style="display:none">'+esc(q.r||"")+'</div></div>';
+}
+function toggleRel(){const e=document.getElementById("rel");if(e)e.style.display=(e.style.display==="none")?"block":"none";}
+
+function renderQCM(){
+ let h=qCard();const q=QS[current];
+ if(q&&q.o&&q.o.length>=3){
+  h+='<div class="card"><h2>Vote du groupe — chacun répond pour soi (P1 à P'+pcount+')</h2><p class="small">Chacun choisit discrètement sa réponse, puis on révèle.</p>';
+  for(let i=1;i<=pcount;i++){h+='<div class="votegrid"><span class="small">P'+i+'</span>';
+   q.o.forEach((o,j)=>{h+='<button class="'+(qcmVotes[i]===j?"sel":"")+'" onclick="qv('+i+','+j+')">'+String.fromCharCode(65+j)+' — '+esc(o)+'</button>';});h+='</div>';}
+  h+='<button class="primary" onclick="revealQCM()">Révéler le vote du groupe</button><div id="qcmres"></div></div>';
+ }else{h+='<div class="card"><p>Cette question n’a pas d’options A/B/C : discussion libre, puis relance.</p></div>';}
+ app(h);
+}
+function qv(i,j){qcmVotes[i]=j;render();}
+function revealQCM(){
+ const q=QS[current];if(!q||!q.o)return;const cnt=q.o.map(()=>0);
+ for(let i=1;i<=pcount;i++){if(qcmVotes[i]!=null)cnt[qcmVotes[i]]++;}
+ let maj=0;cnt.forEach((c,i)=>{if(c>cnt[maj])maj=i;});
+ let h='<div class="bars">';
+ q.o.forEach((o,j)=>{const pct=pcount?Math.round(cnt[j]/pcount*100):0;
+  h+='<div class="bar-row'+(cnt[j]>0&&cnt[j]===cnt[maj]?" maj":"")+'"><span class="lbl">'+String.fromCharCode(65+j)+'</span><span class="tr"><span class="fl" style="width:'+pct+'%"></span></span><span class="cnt">'+cnt[j]+'</span></div>';});
+ h+='</div><p>Majorité du groupe : <strong>'+String.fromCharCode(65+maj)+'</strong> — '+esc(q.o[maj])+'</p>';
+ document.getElementById("qcmres").innerHTML=h;
+}
+
+function renderConseil(){
+ const q=QS[current];
+ let h=qCard();
+ h+='<div class="card"><h2>Conseil à un ami</h2><p>Présentez la situation comme celle d’un ami : <em>« Un ami vit exactement ceci… »</em> Que conseilleriez-vous à cet ami ?</p>';
+ h+='<textarea id="cin" placeholder="Tapez ici un conseil proposé par le groupe…"></textarea><br><button onclick="addConseil()">Ajouter ce conseil</button><ul class="tight" id="clist"></ul>';
+ h+='<button class="primary" onclick="bridge()">Et si c’était vous ?</button><div id="bridge"></div></div>';
+ app(h);renderClist();
+}
+function addConseil(){const v=document.getElementById("cin").value.trim();if(v){conse.push(v);document.getElementById("cin").value="";renderClist();}}
+function renderClist(){const e=document.getElementById("clist");if(e)e.innerHTML=conse.map(c=>"<li>"+esc(c)+"</li>").join("");}
+function bridge(){const q=QS[current];const e=document.getElementById("bridge");if(e)e.innerHTML='<div class="rel">Et si c’était vous dans cette situation ? — Relance : '+esc(q? q.r : "")+'</div>';}
+
+function renderScript(){
+ const q=QS[current];
+ const stem=(q&&q.s)?q.s:"La prochaine fois dans cette situation, je pourrais dire :";
+ let h=qCard();
+ h+='<div class="card"><h2>Script à compléter</h2><p class="q" style="font-size:1.25rem">'+esc(stem)+' « … »</p>';
+ h+='<input id="sin" style="width:100%" placeholder="Proposition du groupe…"> <button onclick="addScript()">Proposer</button>';
+ h+='<p class="small">Cliquez sur « Retenir » à côté d’une proposition pour la garder au bilan de séance.</p><ul class="tight" id="slist"></ul></div>';
+ app(h);renderSlist();
+}
+function addScript(){const v=document.getElementById("sin").value.trim();if(v){scriptsNow.push(v);document.getElementById("sin").value="";renderSlist();}}
+function renderSlist(){const e=document.getElementById("slist");if(e)e.innerHTML=scriptsNow.map((s,i)=>'<li><button onclick="keepScript('+i+')">Retenir</button> '+esc(s)+'</li>').join("");}
+function keepScript(i){if(scriptsNow[i]){state.scripts.push(scriptsNow[i]);save();}renderSlist();}
+
+function faceSVG(e){
+ const mouth={joie:"M32 60 Q50 76 68 60",tristesse:"M32 70 Q50 58 68 70",colere:"M34 68 Q50 62 66 68",peur:"M36 66 Q50 72 64 66",surprise:"M41 64 a9 7 0 1 0 18 0 a9 7 0 1 0 -18 0",neutre:"M34 66 L66 66"}[e]||"M34 66 L66 66";
+ const brow={colere:'<line x1="28" y1="33" x2="42" y2="38"/><line x1="72" y1="33" x2="58" y2="38"/>',peur:'<line x1="28" y1="36" x2="42" y2="31"/><line x1="72" y1="36" x2="58" y2="31"/>'}[e]||"";
+ return '<svg viewBox="0 0 100 100" width="180" height="180" aria-label="visage"><circle cx="50" cy="50" r="44" fill="none" stroke="#1c1917" stroke-width="3"/><circle cx="36" cy="42" r="4" fill="#1c1917"/><circle cx="64" cy="42" r="4" fill="#1c1917"/>'+brow+'<g stroke="#1c1917" stroke-width="3" stroke-linecap="round">'+ (mouth.startsWith("M")&&mouth.includes("a") ? '<path d="'+mouth+'" fill="#1c1917"/>' : '<path d="'+mouth+'" fill="none"/>') +'</g></svg>';
+}
+function renderEmotions(){
+ const e=EMOTIONS[emoIdx%EMOTIONS.length];
+ let h='<div class="card"><h2>Quelle émotion ?</h2><div class="face">'+faceSVG(e.e)+'</div><div class="votegrid">';
+ e.o.forEach(o=>{h+='<button class="opt" onclick="emoPick(\''+o+'\')">'+o+'</button>';});
+ h+='</div><div id="efeed"></div><p><button class="primary" onclick="emoNext()">Suivant</button> <span class="small">Score du groupe : '+state.emoScore+' / '+EMOTIONS.length+'</span></p></div>';
+ app(h);
+}
+function emoPick(o){const e=EMOTIONS[emoIdx%EMOTIONS.length];const ok=(o===e.ok);if(ok){state.emoScore++;save();}const f=document.getElementById("efeed");if(f)f.innerHTML='<p class="feedback '+(ok?"ok":"ko")+'">'+(ok?"C’est ça : "+e.ok+".":"Non — c’était : "+e.ok+".")+'</p>';}
+function emoNext(){emoIdx++;render();}
+
+function renderDetective(){
+ const q=QS[current];
+ let h=qCard();
+ h+='<div class="card"><h2>Détective social</h2><p class="small">Quels indices la situation contient-elle ? On les note ici (dictés par le groupe), puis on confronte les interprétations.</p>';
+ h+='<div class="cols2"><div><h3>Indices POUR</h3><input id="dp" style="width:100%" placeholder="Un indice…"> <button onclick="addD(\'pour\')">Ajouter</button><ul id="lp" class="tight"></ul></div>';
+ h+='<div><h3>Indices CONTRE</h3><input id="dc" style="width:100%" placeholder="Un indice…"> <button onclick="addD(\'contre\')">Ajouter</button><ul id="lc" class="tight"></ul></div></div>';
+ h+='<h3>Interprétations possibles</h3><input id="di" style="width:100%" placeholder="Une interprétation…"> <button onclick="addInterp()">Ajouter</button><ul id="li2" class="tight"></ul>';
+ h+='<h3>Vote du groupe</h3><div class="votegrid">';
+ for(let i=1;i<=pcount;i++){h+='<span class="small">P'+i+'</span>';det.interps.forEach((s,j)=>{h+='<button class="'+(det.votes[i]===j?"sel":"")+'" onclick="dv('+i+','+j+')">Interprétation '+(j+1)+'</button>';});h+='</div>';}
+ h+='<button class="primary" onclick="revealDet()">Révéler le vote</button><div id="dres"></div></div>';
+ app(h);renderDlists();
+}
+function addD(side){const id=side==="pour"?"dp":"dc";const v=document.getElementById(id).value.trim();if(v){det[side].push(v);document.getElementById(id).value="";renderDlists();}}
+function addInterp(){const v=document.getElementById("di").value.trim();if(v){det.interps.push(v);document.getElementById("di").value="";renderDlists();render();}}
+function renderDlists(){const lp=document.getElementById("lp"),lc=document.getElementById("lc"),li=document.getElementById("li2");if(lp)lp.innerHTML=det.pour.map(x=>"<li>"+esc(x)+"</li>").join("");if(lc)lc.innerHTML=det.contre.map(x=>"<li>"+esc(x)+"</li>").join("");if(li)li.innerHTML=det.interps.map((x,j)=>"<li>"+(j+1)+". "+esc(x)+"</li>").join("");}
+function dv(i,j){det.votes[i]=j;render();}
+function revealDet(){const cnt=det.interps.map(()=>0);for(let i=1;i<=pcount;i++){if(det.votes[i]!=null)cnt[det.votes[i]]++;}
+ let h='<div class="bars">';det.interps.forEach((s,j)=>{h+='<div class="bar-row"><span class="lbl">'+(j+1)+'</span><span class="tr"><span class="fl" style="width:'+(pcount?Math.round(cnt[j]/pcount*100):0)+'%"></span></span><span class="cnt">'+cnt[j]+'</span></div>';});
+ h+='</div><p class="small">Puis relance : '+esc(QS[current]?QS[current].r:"")+'</p>';const e=document.getElementById("dres");if(e)e.innerHTML=h;}
+
+function renderEchelle(){
+ const q=QS[current];
+ let h=qCard();
+ h+='<div class="card"><h2>Échelle du groupe</h2><p>« Si vous viviez cette situation, à quel point seriez-vous mal à l’aise ? » — 1 = pas du tout, 5 = beaucoup. Chacun vote pour soi, en secret.</p><div class="votegrid">';
+ for(let i=1;i<=pcount;i++){h+='<span class="small">P'+i+'</span>';for(let v=1;v<=5;v++){h+='<button class="'+(echVotes[i]===v?"sel":"")+'" onclick="ev('+i+','+v+')">'+v+'</button>';}}
+ h+='</div><button class="primary" onclick="revealEch()">Histogramme du groupe</button><div id="eres"></div></div>';
+ app(h);
+}
+function ev(i,v){echVotes[i]=v;render();}
+function revealEch(){const cnt=[0,0,0,0,0,0];for(let i=1;i<=pcount;i++){if(echVotes[i])cnt[echVotes[i]]++;}
+ let h='<div class="bars">';for(let v=1;v<=5;v++){h+='<div class="bar-row"><span class="lbl">'+v+'</span><span class="tr"><span class="fl" style="width:'+(pcount?Math.round(cnt[v]/pcount*100):0)+'%"></span></span><span class="cnt">'+cnt[v]+'</span></div>';}
+ h+='</div><p class="small">1 = pas du tout mal à l’aise, 5 = beaucoup. Relance : '+esc(QS[current]?QS[current].r:"")+'</p>';const e=document.getElementById("eres");if(e)e.innerHTML=h;}
+
+function renderBilan(){
+ let h='<div class="card"><h2>Bilan de la séance n°'+state.snum+'</h2>';
+ h+='<p class="small">'+state.done.length+' / '+QS.length+' questions vues (pioche sans répétition, tous thèmes confondus). Score émotions du groupe : '+state.emoScore+'.</p>';
+ h+='<h3>Questions abordées</h3><ul class="tight">'+(state.done.length?state.done.map(i=>"<li>["+esc(QS[i].t)+"] "+esc(QS[i].q)+"</li>").join(""):'<li class="small">Aucune pour l’instant</li>')+'</ul>';
+ h+='<h3>Scripts retenus</h3><ul class="tight">'+(state.scripts.length?state.scripts.map(s=>"<li>"+esc(s)+"</li>").join(""):'<li class="small">Aucun pour l’instant</li>')+'</ul>';
+ h+='<p><button class="primary" onclick="copyBilan()">Copier le bilan (à coller dans le dossier patient)</button> <span id="bcopy" class="small"></span></p></div>';
+ app(h);
+}
+function copyBilan(){
+ const lines=["Bilan atelier habiletés sociales — séance n°"+state.snum,"Questions abordées :"];
+ state.done.forEach(i=>lines.push("- ["+QS[i].t+"] "+QS[i].q));
+ lines.push("Scripts retenus :");state.scripts.forEach(s=>lines.push("- "+s));
+ const txt=lines.join("\n");
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(()=>{const e=document.getElementById("bcopy");if(e)e.textContent="Bilan copié.";});}
+ else{const e=document.getElementById("bcopy");if(e)e.textContent=txt;}
+}
+
+function renderAccueil(){
+ let h='<div class="card"><h2>Mode d’emploi</h2><ul class="tight">'
+ +'<li>Choisissez un thème en haut, cliquez sur « Question suivante », puis testez un format dans le menu.</li>'
+ +'<li>Le jeton de parole et le minuteur restent visibles en haut de page.</li>'
+ +'<li>Tout est stocké en local dans ce navigateur (localStorage) : aucune donnée ne quitte ce PC.</li>'
+ +'<li>Les questions ci-dessous sont des exemples fictifs. Pour utiliser vos propres questions : collez-les ci-dessous, une par ligne, au format <code>thème | question | relance</code>, puis « Charger mes questions ».</li></ul>'
+ +'<textarea id="imp" placeholder="Travail | Un collègue vous coupe la parole en réunion… | Que pouvez-vous dire ?"></textarea><br>'
+ +'<button onclick="importQ()">Charger mes questions</button> <button class="ghost" onclick="restoreEx()">Restaurer les exemples</button><p id="impres" class="small"></p></div>';
+ h+='<div class="card"><h2>Formats à tester</h2><ul class="tight">'+MODES.slice(1).map(m=>"<li><strong>"+m[1]+"</strong></li>").join("")+'</ul><p class="small">Astuce : alternez les formats toutes les 2-3 questions pour garder le groupe engagé.</p></div>';
+ app(h);
+}
+function importQ(){
+ const v=document.getElementById("imp").value.trim();if(!v)return;
+ const arr=v.split("\n").map(l=>l.split("|").map(s=>s.trim())).filter(p=>p.length>=2&&p[1]).map(p=>({t:p[0]||"Général",q:p[1],r:p[2]||"",o:[],s:""}));
+ if(!arr.length)return;
+ custom=arr;localStorage.setItem(LS_C,JSON.stringify(arr));QS=arr;state.done=[];save();theme="Tous";current=null;
+ const e=document.getElementById("impres");if(e)e.textContent=arr.length+" questions chargées.";
+ render();
+}
+function restoreEx(){localStorage.removeItem(LS_C);custom=null;QS=QUESTIONS;state.done=[];save();current=null;render();}
+
+function fmt(s){return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
+function tdisp(){const e=document.getElementById("tdisp");if(e)e.textContent=fmt(tsec);}
+function timerStart(){if(tint)return;tint=setInterval(()=>{if(tsec>0){tsec--;tdisp();}},1000);}
+function timerPause(){clearInterval(tint);tint=null;}
+function timerReset(){timerPause();tsec=(+document.getElementById("tmin").value||10)*60;tdisp();}
+
+function renderJetons(){let h="";for(let i=1;i<=pcount;i++){h+='<button class="chip'+(i-1===jeton?" on":"")+'" onclick="pass('+i+')">P'+i+'</button>';}document.getElementById("jetons").innerHTML=h;}
+function pass(i){jeton=i-1;renderJetons();}
+function setPcount(v){pcount=+v;jeton=0;renderJetons();}
+
+function app(h){document.getElementById("app").innerHTML=h;}
+function render(){
+ document.getElementById("modes").innerHTML=MODES.map(m=>'<button class="'+(mode===m[0]?"on":"")+'" onclick="go(\''+m[0]+'\')">'+m[1]+'</button>').join("");
+ const sel=document.getElementById("themeSel");
+ sel.innerHTML=themes().map(t=>'<option'+(t===theme?" selected":"")+'>'+t+'</option>').join("");
+ sel.onchange=function(){theme=this.value;render();};
+ document.getElementById("progress").textContent="Pioche : "+state.done.length+"/"+QS.length+" vues — "+pool().length+" restantes (thème « "+theme+" »)";
+ document.getElementById("snum").value=state.snum;
+ document.getElementById("pcount").value=pcount;
+ renderJetons();tdisp();
+ if(mode==="accueil")renderAccueil();
+ else if(mode==="qcm")renderQCM();
+ else if(mode==="conseil")renderConseil();
+ else if(mode==="script")renderScript();
+ else if(mode==="emotions")renderEmotions();
+ else if(mode==="detective")renderDetective();
+ else if(mode==="echelle")renderEchelle();
+ else if(mode==="bilan")renderBilan();
+}
+tsec=(+document.getElementById("tmin").value||10)*60;
+render();
+</script>
+</body>
+</html>
