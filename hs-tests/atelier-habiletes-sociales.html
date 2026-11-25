@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier habiletés sociales — maquette locale</title>
+<style>
+:root{
+  --bg:#f6f3ee; --card:#ffffff; --ink:#292524; --muted:#78716c; --line:#e7e0d4;
+  --acc:#0f766e; --acc-dark:#115e59; --cta:#c2410c; --ok:#15803d; --bad:#b91c1c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:19px;line-height:1.55}
+h1,h2,h3,.brand,.q{font-family:Georgia,"Times New Roman",serif}
+header{background:linear-gradient(120deg,#115e59 0%,#1e3a8a 100%);color:#fff;padding:1rem 1.2rem;position:sticky;top:0;z-index:5;box-shadow:0 4px 18px rgba(0,0,0,.18)}
+.brand{font-size:1.35rem;font-weight:700;letter-spacing:.2px}
+.brand-sub{font-size:.85rem;color:#c7d2fe}
+.brand-row{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between}
+.progress-wrap{min-width:220px;flex:1;max-width:420px}
+.progress{height:.7rem;background:rgba(255,255,255,.25);border-radius:999px;overflow:hidden}
+.progress .fill{display:block;height:100%;width:0;background:#fbbf24;border-radius:999px;transition:width .4s ease}
+.ptext{font-size:.85rem;color:#e0e7ff}
+.bar{display:flex;flex-wrap:wrap;gap:.55rem;align-items:center;margin-top:.65rem}
+.muted-w{color:#e2e8f0;font-size:.95rem}
+.pill{background:rgba(255,255,255,.14);border-radius:999px;padding:.35rem .8rem;font-size:.95rem}
+.timer-pill{font-variant-numeric:tabular-nums;font-weight:700;font-size:1.05rem}
+nav{display:flex;flex-wrap:wrap;gap:.45rem;padding:.7rem 1.2rem}
+nav button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:.5rem 1rem;font-size:.98rem;cursor:pointer;transition:all .15s ease}
+nav button:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.08)}
+nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+main{max-width:1000px;margin:0 auto;padding:1.2rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:1.3rem 1.4rem;margin-bottom:1.1rem;box-shadow:0 6px 22px rgba(41,37,36,.06);animation:pop .25s ease}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card.center{text-align:center}
+.hero{background:linear-gradient(135deg,#fff7ed,#f0fdfa);border:1px solid var(--line);border-radius:20px;padding:2rem 1.6rem;text-align:center;margin-bottom:1.1rem;box-shadow:0 8px 26px rgba(41,37,36,.07);animation:pop .3s ease}
+.hero h1{font-size:2rem;margin:.1rem 0 .4rem;color:#134e4a}
+.hero-sub{color:var(--muted);margin:0 0 1.2rem}
+.theme-banner{display:inline-block;color:#fff;font-weight:700;border-radius:999px;padding:.45rem 1.1rem;margin-bottom:1rem}
+button{cursor:pointer;font:inherit;color:var(--ink)}
+.cta{background:var(--cta);color:#fff;border:none;border-radius:12px;padding:.7rem 1.3rem;font-size:1.05rem;font-weight:600;transition:filter .15s ease,transform .15s ease}
+.cta:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.cta.big{font-size:1.25rem;padding:.9rem 1.8rem}
+.ghost{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.55rem 1rem;font-size:1rem}
+.ghost:hover{background:#fafaf9}
+.small-btn{padding:.3rem .7rem;font-size:.9rem;border-radius:9px}
+h2{font-size:1.3rem;margin:.2rem 0 .8rem;color:#134e4a}
+h3{font-size:1.05rem;margin:.9rem 0 .45rem}
+.q{font-size:1.65rem;font-weight:600;margin:.5rem 0 1rem;line-height:1.35}
+.muted{color:var(--muted)}
+.small-txt{font-size:.92rem}
+.rel{background:#f0fdfa;border-left:5px solid var(--acc);padding:.7rem 1rem;border-radius:10px;margin-top:.7rem;font-size:1.1rem}
+.tagrow{display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem}
+.dot{width:.85rem;height:.85rem;border-radius:50%;display:inline-block}
+.tag{font-size:.9rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.8rem;margin:.8rem 0}
+.tiles.four{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.tiles.five{grid-template-columns:repeat(5,1fr)}
+@media(max-width:700px){.tiles.five{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}}
+.opt-tile{border:2px solid var(--line);border-radius:16px;padding:1rem 1.1rem;background:#fff;position:relative;text-align:left;transition:all .15s ease}
+.btn-tile{cursor:pointer;width:100%;font-size:1.1rem}
+.btn-tile:hover{border-color:var(--acc);transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,118,110,.15)}
+.opt-tile.maj{border-color:var(--ok);background:#f0fdf4}
+.toprow{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}
+.letter{width:2.3rem;height:2.3rem;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem}
+.cnt{font-size:1.5rem;font-weight:800;color:var(--acc-dark)}
+.opt-txt{margin:.2rem 0 .7rem;font-size:1.12rem}
+.verdict{background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d;border-radius:12px;padding:.8rem 1rem;font-size:1.15rem;font-weight:600}
+.bars{margin:.9rem 0}
+.bar-row{display:flex;align-items:center;gap:.6rem;margin:.35rem 0}
+.bar-row .lbl{width:2rem;font-weight:800}
+.bar-row .tr{flex:1;background:#ede9e0;border-radius:8px;height:1.7rem;overflow:hidden}
+.bar-row .fl{display:block;height:100%;background:linear-gradient(90deg,#14b8a6,#0f766e)}
+.bar-row .cnt{width:2rem;text-align:right;font-weight:700}
+.scorebar{display:flex;align-items:center;gap:.6rem;margin:1rem auto;max-width:420px}
+.scorebar .tr{flex:1;background:#ede9e0;border-radius:8px;height:1rem;overflow:hidden}
+.scorebar .fl{display:block;height:100%;background:#f59e0b}
+.scorebar .cnt{font-weight:800}
+input,select,textarea{font:inherit;padding:.55rem .7rem;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+textarea{width:100%;min-height:5.5rem}
+.chips{display:flex;gap:.45rem;flex-wrap:wrap;align-items:center}
+.chip{border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:.4rem .95rem;background:rgba(255,255,255,.1);color:#fff;font-weight:700}
+.chip.on{background:#fbbf24;color:#451a03;border-color:#fbbf24}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:700px){.cols2{grid-template-columns:1fr}}
+.minicard{border:1px dashed var(--line);border-radius:14px;padding:.9rem 1rem;background:#fdfcf9}
+.irow{display:flex;align-items:center;gap:.7rem;border:1px solid var(--line);border-radius:12px;padding:.55rem .8rem;margin:.4rem 0;background:#fff}
+.inum{width:1.8rem;height:1.8rem;border-radius:50%;background:#e7e0d4;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.95rem}
+.itext{flex:1}
+.face{margin:.5rem auto 1rem;width:200px}
+.feedback{font-weight:800;font-size:1.25rem}
+.feedback.ok{color:var(--ok)}
+.feedback.ko{color:var(--bad)}
+ul.tight{margin:.4rem 0;padding-left:1.2rem}
+code{background:#ede9e0;padding:.1rem .4rem;border-radius:6px;font-size:.9em}
+footer{max-width:1000px;margin:0 auto;padding:0 1.2rem 1.5rem;color:var(--muted);font-size:.9rem;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand-row">
+    <div><div class="brand">Atelier habiletés sociales</div><div class="brand-sub">maquette locale · fonctionne hors ligne · rien n’est envoyé</div></div>
+    <div class="progress-wrap"><div class="progress"><span class="fill" id="pfill"></span></div><span class="ptext" id="ptext"></span></div>
+  </div>
+  <div class="bar">
+    <label class="muted-w">Thème <select id="themeSel"></select></label>
+    <button class="cta" onclick="drawNext()">Question suivante</button>
+    <button class="ghost" onclick="resetPioche()">Rejouer la pioche</button>
+  </div>
+  <div class="bar">
+    <span class="pill">Séance n° <input id="snum" type="number" min="1" value="1" style="width:4.2rem"></span>
+    <button class="ghost" onclick="newSession()">Séance suivante</button>
+    <span class="pill timer-pill">⏱ <span id="tdisp" class="timer">10:00</span></span>
+    <input id="tmin" type="number" min="0" max="90" value="10" style="width:4rem" title="minutes">
+    <button class="ghost" onclick="timerStart()">▶</button>
+    <button class="ghost" onclick="timerPause()">⏸</button>
+    <button class="ghost" onclick="timerReset()">↺</button>
+  </div>
+  <div class="bar">
+    <span class="muted-w">Jeton de parole :</span><span id="jetons" class="chips"></span>
+    <label class="muted-w">patients
+      <select id="pcount" onchange="setPcount(this.value)"><option>2</option><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option><option>8</option></select>
+    </label>
+  </div>
+</header>
+<nav id="modes"></nav>
+<main id="app"></main>
+<footer>Tout est stocké en local dans ce navigateur : aucune donnée patient ne quitte ce PC.</footer>
+<script src="questions.js"></script>
+<script>
+const LS_S="hs_local_state_v2", LS_C="hs_local_custom_q_v2";
+let custom=JSON.parse(localStorage.getItem(LS_C)||"null");
+let QS=(custom&&custom.length)?custom:QUESTIONS;
+let state=JSON.parse(localStorage.getItem(LS_S)||"null")||{done:[],scripts:[],snum:1,emoScore:0};
+let mode="accueil", theme="Tous", current=null;
+let qcmT=[0,0,0], echT=[0,0,0,0,0], det={pour:[],contre:[],interps:[]}, detT=[], conse=[], scriptsNow=[];
+let emoIdx=0, pcount=5, jeton=0, tsec=600, tint=null;
+
+const MODES=[["accueil","Accueil"],["qcm","QCM ensemble"],["conseil","Conseil à un ami"],["script","Script à compléter"],["emotions","Émotions"],["detective","Détective"],["echelle","Échelle 1-5"],["bilan","Bilan"]];
+
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function save(){localStorage.setItem(LS_S,JSON.stringify(state));}
+function themes(){const s=new Set(QS.map(q=>q.t));return ["Tous",...s];}
+function themeColor(t){let h=0;for(let i=0;i<t.length;i++){h=(h*31+t.charCodeAt(i))%360;}return "hsl("+h+" 45% 42%)";}
+function pool(){const d=new Set(state.done);return QS.map((q,i)=>({q,i})).filter(x=>!d.has(x.i)&&(theme==="Tous"||x.q.t===theme));}
+function drawNext(){
+ const p=pool();
+ if(!p.length){current=null;render();return;}
+ const x=p[Math.floor(Math.random()*p.length)];
+ current=x.i;state.done.push(x.i);save();
+ qcmT=(QS[current].o&&QS[current].o.length>=3)?QS[current].o.map(()=>0):[0,0,0];
+ echT=[0,0,0,0,0];det={pour:[],contre:[],interps:[]};detT=[];conse=[];scriptsNow=[];
+ render();
+}
+function resetPioche(){state.done=[];save();render();}
+function go(m){mode=m;render();}
+function newSession(){state.snum++;save();render();}
+function startSession(){drawNext();go("qcm");}
+
+function qCard(){
+ if(current==null)return '<div class="card center"><p class="muted">Clique sur « Question suivante » en haut pour tirer une question du thème choisi.</p></div>';
+ const q=QS[current];
+ return '<div class="card"><div class="tagrow"><span class="dot" style="background:'+themeColor(q.t)+'"></span><span class="tag">'+esc(q.t)+'</span></div><div class="q">'+esc(q.q)+'</div><button class="ghost" onclick="toggleRel()">Afficher la relance</button><div id="rel" class="rel" style="display:none">'+esc(q.r||"")+'</div></div>';
+}
+function toggleRel(){const e=document.getElementById("rel");if(e)e.style.display=(e.style.display==="none")?"block":"none";}
+
+function renderQCM(){
+ const q=QS[current];
+ let h=qCard();
+ if(q&&q.o&&q.o.length>=3){
+  h+='<div class="card"><h2>QCM — tout le monde répond en même temps</h2><p class="muted">Chacun crie A, B ou C (ou lève la main) en même temps. L’animateur clique « +1 voix » à chaque réponse.</p><div class="tiles">';
+  q.o.forEach((o,j)=>{
+   h+='<div class="opt-tile" id="tile'+j+'"><div class="toprow"><span class="letter">'+String.fromCharCode(65+j)+'</span><span class="cnt" id="cnt'+j+'">'+qcmT[j]+'</span></div><p class="opt-txt">'+esc(o)+'</p><button class="ghost small-btn" onclick="qAdd('+j+')">+1 voix</button></div>';
+  });
+  h+='</div><p><button class="cta" onclick="revealQCM()">Révéler le choix du groupe</button></p><div id="qcmres"></div></div>';
+ }else{
+  h+='<div class="card"><h2>Discussion libre</h2><p class="muted">Pas d’options A/B/C pour cette question : on en discute directement, puis on affiche la relance.</p></div>';
+ }
+ app(h);
+}
+function qAdd(j){qcmT[j]++;const c=document.getElementById("cnt"+j);if(c)c.textContent=qcmT[j];}
+function revealQCM(){
+ const q=QS[current];if(!q||!q.o)return;
+ let maj=0;qcmT.forEach((c,i)=>{if(c>qcmT[maj])maj=i;});
+ q.o.forEach((o,j)=>{const t=document.getElementById("tile"+j);if(t)t.classList.toggle("maj",qcmT[j]>0&&qcmT[j]===qcmT[maj]);});
+ const r=document.getElementById("qcmres");
+ if(r)r.innerHTML='<p class="verdict">✓ Choix du groupe : '+String.fromCharCode(65+maj)+' — '+esc(q.o[maj])+'</p>';
+}
+
+function renderConseil(){
+ let h=qCard();
+ h+='<div class="card"><h2>Conseil à un ami</h2><p>Présente la situation comme celle d’un ami : <em>« Un ami vit exactement ceci… »</em> Que conseilleriez-vous à cet ami ? (le groupe répond à voix haute, on note ici)</p>';
+ h+='<textarea id="cin" placeholder="Tape ici un conseil proposé par le groupe…"></textarea><p><button class="cta" onclick="addConseil()">Ajouter ce conseil</button></p><ul class="tight" id="clist"></ul>';
+ h+='<p><button class="cta" onclick="bridge()">Et si c’était vous ?</button></p><div id="bridge"></div></div>';
+ app(h);renderClist();
+}
+function addConseil(){const v=document.getElementById("cin").value.trim();if(v){conse.push(v);document.getElementById("cin").value="";renderClist();}}
+function renderClist(){const e=document.getElementById("clist");if(e)e.innerHTML=conse.map(c=>"<li>"+esc(c)+"</li>").join("");}
+function bridge(){const q=QS[current];const e=document.getElementById("bridge");if(e)e.innerHTML='<div class="rel">Et si c’était vous dans cette situation ? — Relance : '+esc(q?q.r:"")+'</div>';}
+
+function renderScript(){
+ const q=QS[current];
+ const stem=(q&&q.s)?q.s:"La prochaine fois dans cette situation, je pourrais dire :";
+ let h=qCard();
+ h+='<div class="card"><h2>Script à compléter</h2><p class="q" style="font-size:1.3rem">'+esc(stem)+' « … »</p>';
+ h+='<input id="sin" style="width:100%" placeholder="Proposition du groupe…"> <button class="cta" onclick="addScript()">Proposer</button>';
+ h+='<p class="muted small-txt">Clique sur « Retenir » à côté d’une proposition pour la garder au bilan de séance (à photocopier / photographier).</p><ul class="tight" id="slist"></ul></div>';
+ app(h);renderSlist();
+}
+function addScript(){const v=document.getElementById("sin").value.trim();if(v){scriptsNow.push(v);document.getElementById("sin").value="";renderSlist();}}
+function renderSlist(){const e=document.getElementById("slist");if(e)e.innerHTML=scriptsNow.map((s,i)=>'<li><button class="ghost small-btn" onclick="keepScript('+i+')">Retenir</button> '+esc(s)+'</li>').join("");}
+function keepScript(i){if(scriptsNow[i]){state.scripts.push(scriptsNow[i]);save();}renderSlist();}
+
+function faceSVG(e){
+ const mouth={joie:"M32 60 Q50 76 68 60",tristesse:"M32 70 Q50 58 68 70",colere:"M34 68 Q50 62 66 68",peur:"M36 66 Q50 72 64 66",surprise:"M41 64 a9 7 0 1 0 18 0 a9 7 0 1 0 -18 0",neutre:"M34 66 L66 66"}[e]||"M34 66 L66 66";
+ const brow={colere:'<line x1="28" y1="33" x2="42" y2="38"/><line x1="72" y1="33" x2="58" y2="38"/>',peur:'<line x1="28" y1="36" x2="42" y2="31"/><line x1="72" y1="36" x2="58" y2="31"/>'}[e]||"";
+ const filled=mouth.indexOf(" a ")>0?'fill="#292524"':'fill="none"';
+ return '<svg viewBox="0 0 100 100" width="200" height="200"><circle cx="50" cy="50" r="44" fill="#fff" stroke="#292524" stroke-width="3"/><circle cx="36" cy="42" r="4" fill="#292524"/><circle cx="64" cy="42" r="4" fill="#292524"/>'+brow+'<path d="'+mouth+'" '+filled+' stroke="#292524" stroke-width="3" stroke-linecap="round"/></svg>';
+}
+function renderEmotions(){
+ const e=EMOTIONS[emoIdx%EMOTIONS.length];
+ let h='<div class="card center"><h2>Quelle émotion ?</h2><div class="face">'+faceSVG(e.e)+'</div><div class="tiles four">';
+ e.o.forEach(o=>{h+='<button class="opt-tile btn-tile" onclick="emoPick(\''+o+'\')"><span class="opt-txt">'+o+'</span></button>';});
+ h+='</div><div id="efeed"></div><div class="scorebar"><span class="small-txt muted">Score du groupe</span><span class="tr"><span class="fl" style="width:'+Math.round(state.emoScore/EMOTIONS.length*100)+'%"></span></span><span class="cnt">'+state.emoScore+'/'+EMOTIONS.length+'</span></div>';
+ h+='<p><button class="cta" onclick="emoNext()">Suivant</button></p></div>';
+ app(h);
+}
+function emoPick(o){const e=EMOTIONS[emoIdx%EMOTIONS.length];const ok=(o===e.ok);if(ok){state.emoScore++;save();}const f=document.getElementById("efeed");if(f)f.innerHTML='<p class="feedback '+(ok?"ok":"ko")+'">'+(ok?"✓ C’est ça : "+e.ok+" !":"✗ Non — c’était : "+e.ok+".")+'</p>';}
+function emoNext(){emoIdx++;render();}
+
+function renderDetective(){
+ let h=qCard();
+ h+='<div class="card"><h2>Détective social</h2><p class="muted">Quels indices contient la situation ? On note ceux du groupe, puis on confronte les interprétations (vote à mains levées).</p>';
+ h+='<div class="cols2"><div class="minicard"><h3>Indices POUR</h3><input id="dp" style="width:100%" placeholder="Un indice…"> <button class="ghost" onclick="addD(\'pour\')">Ajouter</button><ul id="lp" class="tight"></ul></div>';
+ h+='<div class="minicard"><h3>Indices CONTRE</h3><input id="dc" style="width:100%" placeholder="Un indice…"> <button class="ghost" onclick="addD(\'contre\')">Ajouter</button><ul id="lc" class="tight"></ul></div></div>';
+ h+='<h3>Interprétations possibles</h3><input id="di" style="width:100%" placeholder="Une interprétation…"> <button class="ghost" onclick="addInterp()">Ajouter</button>';
+ h+='<div id="ilist"></div><p><button class="cta" onclick="revealDet()">Révéler le vote du groupe</button></p><div id="dres"></div></div>';
+ app(h);renderDlists();
+}
+function addD(side){const id=(side==="pour")?"dp":"dc";const v=document.getElementById(id).value.trim();if(v){det[side].push(v);document.getElementById(id).value="";renderDlists();}}
+function addInterp(){const v=document.getElementById("di").value.trim();if(v){det.interps.push(v);detT.push(0);document.getElementById("di").value="";renderDlists();}}
+function renderDlists(){
+ const lp=document.getElementById("lp"),lc=document.getElementById("lc"),il=document.getElementById("ilist");
+ if(lp)lp.innerHTML=det.pour.map(x=>"<li>"+esc(x)+"</li>").join("");
+ if(lc)lc.innerHTML=det.contre.map(x=>"<li>"+esc(x)+"</li>").join("");
+ if(il)il.innerHTML=det.interps.map((s,j)=>'<div class="irow"><span class="inum">'+(j+1)+'</span><span class="itext">'+esc(s)+'</span><span class="cnt" id="dcnt'+j+'">'+detT[j]+'</span><button class="ghost small-btn" onclick="dAdd('+j+')">+1 voix</button></div>').join("");
+}
+function dAdd(j){detT[j]++;const c=document.getElementById("dcnt"+j);if(c)c.textContent=detT[j];}
+function revealDet(){
+ if(!det.interps.length)return;
+ let maj=0;detT.forEach((c,i)=>{if(c>detT[maj])maj=i;});
+ const e=document.getElementById("dres");
+ if(e)e.innerHTML='<p class="verdict">✓ Interprétation la plus votée : '+esc(det.interps[maj])+' ('+detT[maj]+' voix)</p><p class="muted small-txt">Puis relance : '+esc(QS[current]?QS[current].r:"")+'</p>';
+}
+
+function renderEchelle(){
+ let h=qCard();
+ h+='<div class="card"><h2>Échelle du groupe</h2><p>« Si tu vivais cette situation, à quel point serais-tu mal à l’aise ? » — chacun annonce son chiffre en même temps, l’animateur compte les +1.</p><div class="tiles five">';
+ const labels=["1 — pas du tout","2","3 — moyen","4","5 — beaucoup"];
+ for(let v=1;v<=5;v++){
+  h+='<div class="opt-tile" id="etile'+v+'"><div class="toprow"><span class="letter">'+v+'</span><span class="cnt" id="ecnt'+v+'">'+echT[v-1]+'</span></div><p class="opt-txt small-txt">'+labels[v-1]+'</p><button class="ghost small-btn" onclick="eAdd('+v+')">+1 voix</button></div>';
+ }
+ h+='</div><p><button class="cta" onclick="revealEch()">Voir l’histogramme du groupe</button></p><div id="eres"></div></div>';
+ app(h);
+}
+function eAdd(v){echT[v-1]++;const c=document.getElementById("ecnt"+v);if(c)c.textContent=echT[v-1];}
+function revealEch(){
+ const tot=echT.reduce((a,b)=>a+b,0)||1;
+ let h='<div class="bars">';
+ for(let v=1;v<=5;v++){
+  h+='<div class="bar-row"><span class="lbl">'+v+'</span><span class="tr"><span class="fl" style="width:'+Math.round(echT[v-1]/tot*100)+'%"></span></span><span class="cnt">'+echT[v-1]+'</span></div>';
+ }
+ h+='</div><p class="muted small-txt">Puis relance : '+esc(QS[current]?QS[current].r:"")+'</p>';
+ const e=document.getElementById("eres");if(e)e.innerHTML=h;
+}
+
+function renderBilan(){
+ let h='<div class="card"><h2>Bilan de la séance n°'+state.snum+'</h2>';
+ h+='<p class="muted">'+state.done.length+' / '+QS.length+' questions vues · score émotions du groupe : '+state.emoScore+'/'+EMOTIONS.length+'</p>';
+ h+='<h3>Questions abordées</h3><ul class="tight">'+(state.done.length?state.done.map(i=>"<li><span class='tag'>"+esc(QS[i].t)+"</span> "+esc(QS[i].q)+"</li>").join(""):'<li class="muted">Aucune pour l’instant</li>')+'</ul>';
+ h+='<h3>Scripts retenus (à photocopier / photographier)</h3><ul class="tight">'+(state.scripts.length?state.scripts.map(s=>"<li>"+esc(s)+"</li>").join(""):'<li class="muted">Aucun pour l’instant</li>')+'</ul>';
+ h+='<p><button class="cta" onclick="copyBilan()">Copier le bilan</button> <span id="bcopy" class="muted"></span></p></div>';
+ app(h);
+}
+function copyBilan(){
+ const lines=["Bilan atelier habiletés sociales — séance n°"+state.snum,"Questions abordées :"];
+ state.done.forEach(i=>lines.push("- ["+QS[i].t+"] "+QS[i].q));
+ lines.push("Scripts retenus :");state.scripts.forEach(s=>lines.push("- "+s));
+ const txt=lines.join("\n");
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(()=>{const e=document.getElementById("bcopy");if(e)e.textContent="✓ copié";});}
+ else{const e=document.getElementById("bcopy");if(e)e.textContent=txt;}
+}
+
+function renderAccueil(){
+ let h='<div class="hero"><h1>Atelier habiletés sociales</h1><p class="hero-sub">Séance du jeudi 10h · '+pcount+' patients · tout se passe sur ce PC, rien n’est envoyé ailleurs.</p>';
+ if(theme!=="Tous")h+='<div><span class="theme-banner" style="background:'+themeColor(theme)+'">Thème du jour : '+esc(theme)+'</span></div>';
+ h+='<p><button class="cta big" onclick="startSession()">Tirer la première question</button></p></div>';
+ h+='<div class="card"><h2>Préparer la séance</h2><p class="muted">Colle ici tes questions (une par ligne : <code>thème | question | relance</code>), puis « Charger » — elles restent mémorisées sur ce PC.</p>';
+ h+='<textarea id="imp" placeholder="Travail | Un collègue vous coupe la parole en réunion… | Que pouvez-vous dire ?"></textarea>';
+ h+='<p><button class="cta" onclick="importQ()">Charger mes questions</button> <button class="ghost" onclick="restoreEx()">Restaurer les exemples</button> <span id="impres" class="muted"></span></p></div>';
+ h+='<div class="card"><h2>Les formats à tester</h2><div class="tiles">';
+ MODES.slice(1).forEach(m=>{h+='<button class="opt-tile btn-tile" onclick="go(\''+m[0]+'\')"><span class="opt-txt"><strong>'+m[1]+'</strong></span></button>';});
+ h+='</div><p class="muted small-txt">Astuce : alterne les formats toutes les 2–3 questions pour garder le groupe engagé.</p></div>';
+ app(h);
+}
+function importQ(){
+ const v=document.getElementById("imp").value.trim();if(!v)return;
+ const arr=v.split("\n").map(l=>l.split("|").map(s=>s.trim())).filter(p=>p.length>=2&&p[1]).map(p=>({t:p[0]||"Général",q:p[1],r:p[2]||"",o:[],s:""}));
+ if(!arr.length)return;
+ custom=arr;localStorage.setItem(LS_C,JSON.stringify(arr));QS=arr;state.done=[];save();theme="Tous";current=null;
+ const e=document.getElementById("impres");if(e)e.textContent=arr.length+" questions chargées ✓";
+ render();
+}
+function restoreEx(){localStorage.removeItem(LS_C);custom=null;QS=QUESTIONS;state.done=[];save();current=null;render();}
+
+function fmt(s){return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
+function tdisp(){const e=document.getElementById("tdisp");if(e)e.textContent=fmt(tsec);}
+function timerStart(){if(tint)return;tint=setInterval(()=>{if(tsec>0){tsec--;tdisp();}},1000);}
+function timerPause(){clearInterval(tint);tint=null;}
+function timerReset(){timerPause();tsec=(+document.getElementById("tmin").value||10)*60;tdisp();}
+
+function renderJetons(){
+ let h="";
+ for(let i=1;i<=pcount;i++){h+='<button class="chip'+(i-1===jeton?" on":"")+'" onclick="pass('+i+')">P'+i+(i-1===jeton?" parle":"")+'</button>';}
+ document.getElementById("jetons").innerHTML=h;
+}
+function pass(i){jeton=i-1;renderJetons();}
+function setPcount(v){pcount=+v;jeton=0;renderJetons();}
+
+function app(h){document.getElementById("app").innerHTML=h;}
+function render(){
+ document.getElementById("modes").innerHTML=MODES.map(m=>'<button class="'+(mode===m[0]?"on":"")+'" onclick="go(\''+m[0]+'\')">'+m[1]+'</button>').join("");
+ const sel=document.getElementById("themeSel");
+ sel.innerHTML=themes().map(t=>'<option'+(t===theme?" selected":"")+'>'+t+'</option>').join("");
+ sel.onchange=function(){theme=this.value;render();};
+ const pct=QS.length?Math.round(state.done.length/QS.length*100):0;
+ document.getElementById("pfill").style.width=pct+"%";
+ document.getElementById("ptext").textContent=state.done.length+" / "+QS.length+" questions vues — "+pool().length+" restantes (thème « "+theme+" »)";
+ document.getElementById("snum").value=state.snum;
+ document.getElementById("pcount").value=pcount;
+ renderJetons();tdisp();
+ if(mode==="accueil")renderAccueil();
+ else if(mode==="qcm")renderQCM();
+ else if(mode==="conseil")renderConseil();
+ else if(mode==="script")renderScript();
+ else if(mode==="emotions")renderEmotions();
+ else if(mode==="detective")renderDetective();
+ else if(mode==="echelle")renderEchelle();
+ else if(mode==="bilan")renderBilan();
+}
+tsec=(+document.getElementById("tmin").value||10)*60;
+render();
+</script>
+</body>
+</html>
